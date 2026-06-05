@@ -37,6 +37,27 @@ def _fmt_date(d):
     return pd.Timestamp(d).strftime("%b %Y")
 
 
+def _website_url(domain):
+    """Normalize Specter Domain field to a full https URL."""
+    if domain is None or (isinstance(domain, float) and pd.isna(domain)):
+        return None
+    d = str(domain).strip()
+    if not d or d.lower() == "nan":
+        return None
+    if d.startswith(("http://", "https://")):
+        return d.rstrip("/")
+    return f"https://{d.lstrip('/')}"
+
+
+def _website_markdown(domain):
+    """Markdown link for the brief, e.g. [blw.ai](https://blw.ai)."""
+    url = _website_url(domain)
+    if not url:
+        return None
+    display = url.removeprefix("https://").removeprefix("http://").rstrip("/")
+    return f"[{display}]({url})"
+
+
 def _template_rationale(row):
     """Deterministic, specific rationale grounded in the actual data."""
     name = row.get("Company Name", "This company")
@@ -88,8 +109,8 @@ def _template_rationale(row):
             parts.append("Founder signal: " + ", ".join(key_tags) + ".")
 
     parts.append(
-        f"Stage {row['stage_score']}% | Sector {row['sector_score']}% | "
-        f"Founder {row['founder_score']}% | Momentum {row['momentum_score']}%.")
+        f"Stage {int(row['stage_score'])} | Sector {int(row['sector_score'])} | "
+        f"Founder {int(row['founder_score'])} | Momentum {int(row['momentum_score'])}.")
     return " ".join(parts)
 
 
@@ -111,7 +132,7 @@ Be specific, reference the actual data, no generic VC language.
 - Employee Count: {row.get('Employee Count')}
 - Employee 6mo Growth: {row.get('Employee Monthly Growth6')}
 - Web 6mo Growth: {row.get('Web Visits Monthly Growth6')}
-- Score: {row.get('total_score')}/100 ({row.get('qualification_tier', 'n/a')})
+- Score: {row.get('total_score')}/100
 
 Return only the rationale paragraph."""
     msg = client.messages.create(
@@ -131,36 +152,42 @@ def generate_report(ranked, config, output_dir="output", use_llm=False):
     lines.append("")
     lines.append(f"Generated from the latest Specter export. "
                  f"Showing the top {len(ranked)} qualified companies "
-                 f"(min score {config['min_score_threshold']}%).")
+                 f"(min score {config['min_score_threshold']}).")
     lines.append("")
     lines.append("**Active weights:** " + ", ".join(
-        f"{k} {int(v * 100)}%" for k, v in config["weights"].items()))
+        f"{k} {v}" for k, v in config["weights"].items()))
     lines.append("")
     lines.append("---")
     lines.append("")
 
-    tier_order = list(dict.fromkeys(ranked["qualification_tier"].tolist()))
-    rank_num = 0
-    for tier_label in tier_order:
-        tier_rows = ranked[ranked["qualification_tier"] == tier_label]
-        if len(tier_rows) == 0:
-            continue
-        lines.append(f"### {tier_label}")
+    for i, row in ranked.iterrows():
+        rationale = _llm_rationale(row) if use_llm else _template_rationale(row)
+        tier = row.get("qualification_tier", "")
+        header = f"## {i+1}. {row.get('Company Name')}  — score {int(row['total_score'])}"
+        if tier:
+            header += f"  ·  {tier}"
+        lines.append(header)
+        loc = row.get("HQ Location", "")
+        ind = row.get("Industry", "")
+        meta = " · ".join(x for x in [str(row.get('Growth Stage', '')), str(ind), str(loc)] if x and x != "nan")
+        if meta:
+            lines.append(f"*{meta}*")
+        website = _website_markdown(row.get("Domain"))
+        if website:
+            lines.append(f"**Website:** {website}")
         lines.append("")
-        for _, row in tier_rows.iterrows():
-            rank_num += 1
-            rationale = _llm_rationale(row) if use_llm else _template_rationale(row)
-            tier = row.get("qualification_tier", "")
-            lines.append(f"## {rank_num}. {row.get('Company Name')}  "
-                         f"— {row['total_score']}% · {tier}")
-            loc = row.get("HQ Location", "")
-            ind = row.get("Industry", "")
-            meta = " · ".join(x for x in [str(row.get('Growth Stage', '')), str(ind), str(loc)] if x and x != "nan")
-            if meta:
-                lines.append(f"*{meta}*")
+        lines.append(rationale)
+        lines.append("")
+        # Recommended action block (added by recommend_actions.py).
+        if "outreach_action" in row and pd.notna(row.get("outreach_action")):
+            lines.append(f"**Action:** {row['outreach_action']} — {row.get('timing_note', '')}")
             lines.append("")
-            lines.append(rationale)
-            lines.append("")
+            steps = str(row.get("diligence_steps", "")).split(" | ")
+            if steps and steps[0]:
+                lines.append("**Diligence:**")
+                for s in steps:
+                    lines.append(f"- {s}")
+                lines.append("")
 
     md_path = os.path.join(output_dir, "investor_brief.md")
     with open(md_path, "w", encoding="utf-8") as f:
