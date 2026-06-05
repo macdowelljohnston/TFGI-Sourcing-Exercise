@@ -1,8 +1,6 @@
 # TFGI Sourcing Exercise — Specter Screening Pipeline
 
-A repeatable workflow that ingests a weekly Specter CSV export (~150 companies,
-~200 columns), qualifies and ranks each company against Friedkin's investment
-criteria, and produces an investor-ready shortlist with a rationale for each name.
+A repeatable workflow that ingests a weekly Specter CSV export, qualifies and ranks each company against The Friedkin Group's investment criteria, and produces an investor-ready shortlist with a rationale for each name.
 
 Built to be **re-run every week** when a fresh export drops in — and to be
 **edited by a non-technical team member** without touching any code.
@@ -88,7 +86,7 @@ Every company gets four sub-scores (0–100), combined using `scoring.weights`:
 total_score = round(100 x (stage*w1 + sector*w2 + founder*w3 + momentum*w4))
 ```
 
-Tier labels come from `scoring.score_tiers` (default: Priority 92+, Strong 88+, Qualified 40+).
+Tier labels come from `scoring.score_tiers` (default: Tier 1 at 92+, Tier 2 at 88+, Tier 3 at 60+). Companies below `min_score_threshold` (default 60) are excluded.
 
 ---
 
@@ -123,16 +121,18 @@ Everything the interviewer may ask you to change lives in **`config/pipeline_set
 python scripts/run_pipeline.py
 ```
 
-Keep your Specter file in `data/input/` and re-run after each config edit. Full cheat sheet: [DEMO.md](DEMO.md).
+Keep your Specter file in `data/input/` and re-run after each config edit.
 
-| They ask to change… | Config path | Effect |
-|---------------------|-------------|--------|
-| **Scoring weight** | `scoring.weights` (must sum to 1.0) | Re-orders top 15 in the brief |
-| **Sector** | `scoring.target_sectors` | Changes `sector_score` and sector summary |
-| **Filter** | `scoring.min_score_threshold` or `scoring.target_stages` | Fewer/more qualified companies |
-| Outreach tiers (bonus) | `actions.reach_out_threshold` | Tier 1 vs Tier 2 action lines |
+| They ask to change… | Config path | Effect | What to show after re-run |
+|---------------------|-------------|--------|---------------------------|
+| **Scoring weight** | `scoring.weights` (must sum to 1.0) | Re-orders top 15 in the brief | Terminal Top 5 + `output/<run>/investor_brief.md` |
+| **Sector** | `scoring.target_sectors` | Changes `sector_score` and sector summary | `scored_companies.csv` sorted by `sector_score` |
+| **Filter** | `scoring.min_score_threshold` (e.g. `60` → `75`) or `scoring.target_stages` | Fewer/more qualified companies | Terminal: `N companies passed the threshold` |
+| Outreach tiers (bonus) | `actions.reach_out_threshold` | Tier 1 vs Tier 2 action lines | `Action:` lines in the brief |
 
 **Suggested live tweak:** set `founder_signal` to `0.35` and `growth_momentum` to `0.15`, re-run, show Top 5 in the terminal and `output/<run>/investor_brief.md`.
+
+Add `--no-word` to skip the Word document during a quick demo. If `data/input/` is empty, drop a Specter export there, or pass `--input path/to/file.xlsx`.
 
 ### Optional LLM rationales
 ```powershell

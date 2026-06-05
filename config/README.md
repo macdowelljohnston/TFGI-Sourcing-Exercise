@@ -7,7 +7,7 @@ read this file only — edit JSON, save, re-run the pipeline. No code changes ne
 python scripts/run_pipeline.py
 ```
 
-For a live interview walkthrough (weight / sector / filter levers), see [DEMO.md](../DEMO.md).
+For a live interview walkthrough (weight / sector / filter levers), see the "Live demo" section in the main [README.md](../README.md).
 
 ## Sections
 
