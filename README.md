@@ -44,8 +44,8 @@ data/input/*.xlsx
        │   dedupes, drops inactive companies
        ▼
 [2] score_companies.py   ← skills/02_qualification_scoring.md
-       │   scores each company 0–1 on four weighted dimensions,
-       │   filters and ranks
+       │   scores each company 0–100 on four weighted dimensions,
+       │   assigns a tier, filters and ranks
        ▼
 [3] generate_report.py   ← skills/04_screening_summary.md
        │   writes a data-grounded rationale per company
@@ -70,8 +70,8 @@ Each file in `/skills/` does one job and is independently editable.
 
 ## The scoring model
 
-Every company gets four sub-scores (each 0–1), combined using weights from
-`config/scoring_weights.json`:
+Every company gets four sub-scores (each **0–100**), combined using weights from
+`config/scoring_weights.json`, plus a **qualification tier** (e.g. Tier 1 — Priority):
 
 | Dimension | What it measures |
 |-----------|------------------|
@@ -81,8 +81,10 @@ Every company gets four sub-scores (each 0–1), combined using weights from
 | **Growth momentum** | Headcount growth + web traffic growth + funding recency |
 
 ```
-total_score = stage·w1 + sector·w2 + founder·w3 + momentum·w4
+total_score (0–100) = round(100 × (stage·w1 + sector·w2 + founder·w3 + momentum·w4))
 ```
+
+Tier labels come from `score_tiers` in the config (default: Priority 92+, Strong 88+, Qualified 40+).
 
 ---
 
@@ -97,7 +99,8 @@ total_score = stage·w1 + sector·w2 + founder·w3 + momentum·w4
 | Change which stages qualify | `target_stages` |
 | Change how founder tags score | `founder_tag_scores` |
 | Change the shortlist length | `top_n_companies` |
-| Change the cutoff for inclusion | `min_score_threshold` |
+| Change the cutoff for inclusion | `min_score_threshold` (0–100, default 40) |
+| Change tier labels and bands | `score_tiers` |
 
 After editing, just re-run `python scripts/run_pipeline.py`. No code changes needed.
 
@@ -133,7 +136,7 @@ After editing, just re-run `python scripts/run_pipeline.py`. No code changes nee
 ## A note on the data
 
 This Specter extract is **pre-filtered to Friedkin's sectors and stages**, so
-nearly every company scores ~1.0 on stage fit and sector alignment — those axes
+nearly every company scores ~100% on stage fit and sector alignment — those axes
 don't discriminate much *within* this list. The meaningful differentiation comes
 from **founder signal** and **growth momentum**, which is where the ranking
 actually separates companies. The four-dimension model is kept intact so the

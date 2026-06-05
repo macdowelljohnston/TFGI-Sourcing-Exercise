@@ -1,8 +1,9 @@
 # Skill: Qualification Scoring
 
 ## Purpose
-Score each cleaned company 0–1 against Friedkin's investment criteria.
-Produces a numeric total_score and sub-scores for each dimension.
+Score each cleaned company against Friedkin's investment criteria.
+Produces a total fit score (0–100), sub-scores per dimension (0–100),
+and a qualification tier label for the investor brief.
 
 ## Scoring Dimensions
 
@@ -39,10 +40,22 @@ Produces a numeric total_score and sub-scores for each dimension.
   - Unknown → 0.1
 
 ## Final Score Formula
-total_score = (stage_fit × w1) + (sector_alignment × w2)
-            + (founder_signal × w3) + (growth_momentum × w4)
+Internally each dimension is scored 0–1, then combined:
 
-Weights are read from config/scoring_weights.json at runtime.
+    total = (stage_fit × w1) + (sector_alignment × w2)
+          + (founder_signal × w3) + (growth_momentum × w4)
+
+The pipeline stores `total_score` and sub-scores as integers **0–100**
+(`round(total × 100)`). Weights in config are still fractions (e.g. 0.25).
+
+## Qualification Tiers
+After computing the 0–100 total, assign the first matching tier from
+`score_tiers` in config (highest `min_score` first). Default bands:
+- Tier 1 — Priority: 92+
+- Tier 2 — Strong: 88–91
+- Tier 3 — Qualified: 40–87
+
+Companies below `min_score_threshold` (default 40) are excluded.
 
 ## Editing This Skill
 - To change weights: edit config/scoring_weights.json — no code change needed.

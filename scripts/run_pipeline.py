@@ -48,7 +48,8 @@ def main():
 
     print("\nDone. Top 5:")
     for i, row in ranked.head(5).iterrows():
-        print(f"  {i+1}. {row['Company Name']:<28} {row['total_score']:.2f}")
+        print(f"  {i+1}. {row['Company Name']:<28} "
+              f"{row['total_score']}% · {row['qualification_tier']}")
     print("\nOpen output/investor_brief.md for the full brief.")
 
 

@@ -18,7 +18,7 @@ Given the following founder background for {{company_name}}, return ONLY
 a JSON object with no other text:
 
     {
-      "score": float 0.0 to 1.0,
+      "score": integer 0 to 100,
       "signals": list of up to 3 short positive signal strings,
       "red_flags": list of any concerns or empty list,
       "summary": one sentence assessment
@@ -38,5 +38,5 @@ Founder background:
 - To change scoring signals, edit the Scoring guide section above
   and update the prompt in scripts/score_companies.py accordingly.
 - To add new positive signals, adjust weights so total possible
-  score does not exceed 1.0.
+  score does not exceed 100 when converted from the internal 0–1 scale.
   

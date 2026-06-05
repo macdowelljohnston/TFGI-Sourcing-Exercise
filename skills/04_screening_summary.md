@@ -31,8 +31,8 @@ Company data:
 - Employee 6-month Growth: {{employee_growth_6m}}
 - Web Visits: {{web_visits}}
 - Web 6-month Growth: {{web_growth_6m}}
-- Qualification Score: {{total_score}}/1.0
-- Score Breakdown: Stage {{stage_score}} | Sector {{sector_score}} | Founder {{founder_score}} | Momentum {{momentum_score}}
+- Qualification Score: {{total_score}}% ({{qualification_tier}})
+- Score Breakdown: Stage {{stage_score}}% | Sector {{sector_score}}% | Founder {{founder_score}}% | Momentum {{momentum_score}}%
 
 Return only the rationale paragraph. No bullet points. No headers.
 

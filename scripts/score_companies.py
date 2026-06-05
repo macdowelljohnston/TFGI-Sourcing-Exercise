@@ -1,7 +1,8 @@
 """
 score_companies.py
-Step 2 of the pipeline: score each cleaned company 0-1 against Friedkin's
+Step 2 of the pipeline: score each cleaned company against Friedkin's
 investment criteria, using weights from config/scoring_weights.json.
+Outputs fit scores as integers 0-100 plus a qualification tier.
 
 See skills/02_qualification_scoring.md and skills/03_founder_assessment.md
 for the logic this implements. All tunable values live in the config file.
@@ -78,6 +79,17 @@ def _growth_momentum(row, m):
     return 0.4 * emp_score + 0.3 * web_score + 0.3 * recency
 
 
+def _to_pct(x):
+    return int(round(max(0.0, min(1.0, x)) * 100))
+
+
+def _assign_tier(pct, tiers):
+    for tier in tiers:
+        if pct >= tier["min_score"]:
+            return tier["label"]
+    return tiers[-1]["label"] if tiers else "Unranked"
+
+
 def score_dataframe(df, config):
     w = config["weights"]
     target_stages = config["target_stages"]
@@ -85,6 +97,7 @@ def score_dataframe(df, config):
     tag_scores = config["founder_tag_scores"]
     normaliser = config.get("founder_normaliser", 1.5)
     m = config["momentum"]
+    tiers = config.get("score_tiers", [])
 
     rows = []
     for _, row in df.iterrows():
@@ -94,12 +107,14 @@ def score_dataframe(df, config):
         momentum = _growth_momentum(row, m)
         total = (stage * w["stage_fit"] + sector * w["sector_alignment"] +
                  founder * w["founder_signal"] + momentum * w["growth_momentum"])
+        total_pct = _to_pct(total)
         rows.append({
-            "stage_score": round(stage, 3),
-            "sector_score": round(sector, 3),
-            "founder_score": round(founder, 3),
-            "momentum_score": round(momentum, 3),
-            "total_score": round(total, 3),
+            "stage_score": _to_pct(stage),
+            "sector_score": _to_pct(sector),
+            "founder_score": _to_pct(founder),
+            "momentum_score": _to_pct(momentum),
+            "total_score": total_pct,
+            "qualification_tier": _assign_tier(total_pct, tiers),
         })
 
     scores = pd.DataFrame(rows, index=df.index)
@@ -116,4 +131,4 @@ if __name__ == "__main__":
     cfg = load_config()
     cleaned = load_and_clean()
     ranked = score_dataframe(cleaned, cfg)
-    print(ranked[["Company Name", "total_score"]].to_string())
+    print(ranked[["Company Name", "total_score", "qualification_tier"]].to_string())

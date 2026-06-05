@@ -88,8 +88,8 @@ def _template_rationale(row):
             parts.append("Founder signal: " + ", ".join(key_tags) + ".")
 
     parts.append(
-        f"Stage {row['stage_score']:.2f} | Sector {row['sector_score']:.2f} | "
-        f"Founder {row['founder_score']:.2f} | Momentum {row['momentum_score']:.2f}.")
+        f"Stage {row['stage_score']}% | Sector {row['sector_score']}% | "
+        f"Founder {row['founder_score']}% | Momentum {row['momentum_score']}%.")
     return " ".join(parts)
 
 
@@ -111,7 +111,7 @@ Be specific, reference the actual data, no generic VC language.
 - Employee Count: {row.get('Employee Count')}
 - Employee 6mo Growth: {row.get('Employee Monthly Growth6')}
 - Web 6mo Growth: {row.get('Web Visits Monthly Growth6')}
-- Score: {row.get('total_score')}/1.0
+- Score: {row.get('total_score')}/100 ({row.get('qualification_tier', 'n/a')})
 
 Return only the rationale paragraph."""
     msg = client.messages.create(
@@ -131,26 +131,36 @@ def generate_report(ranked, config, output_dir="output", use_llm=False):
     lines.append("")
     lines.append(f"Generated from the latest Specter export. "
                  f"Showing the top {len(ranked)} qualified companies "
-                 f"(min score {config['min_score_threshold']}).")
+                 f"(min score {config['min_score_threshold']}%).")
     lines.append("")
     lines.append("**Active weights:** " + ", ".join(
-        f"{k} {v}" for k, v in config["weights"].items()))
+        f"{k} {int(v * 100)}%" for k, v in config["weights"].items()))
     lines.append("")
     lines.append("---")
     lines.append("")
 
-    for i, row in ranked.iterrows():
-        rationale = _llm_rationale(row) if use_llm else _template_rationale(row)
-        lines.append(f"## {i+1}. {row.get('Company Name')}  "
-                     f"— score {row['total_score']:.2f}")
-        loc = row.get("HQ Location", "")
-        ind = row.get("Industry", "")
-        meta = " · ".join(x for x in [str(row.get('Growth Stage', '')), str(ind), str(loc)] if x and x != "nan")
-        if meta:
-            lines.append(f"*{meta}*")
+    tier_order = list(dict.fromkeys(ranked["qualification_tier"].tolist()))
+    rank_num = 0
+    for tier_label in tier_order:
+        tier_rows = ranked[ranked["qualification_tier"] == tier_label]
+        if len(tier_rows) == 0:
+            continue
+        lines.append(f"### {tier_label}")
         lines.append("")
-        lines.append(rationale)
-        lines.append("")
+        for _, row in tier_rows.iterrows():
+            rank_num += 1
+            rationale = _llm_rationale(row) if use_llm else _template_rationale(row)
+            tier = row.get("qualification_tier", "")
+            lines.append(f"## {rank_num}. {row.get('Company Name')}  "
+                         f"— {row['total_score']}% · {tier}")
+            loc = row.get("HQ Location", "")
+            ind = row.get("Industry", "")
+            meta = " · ".join(x for x in [str(row.get('Growth Stage', '')), str(ind), str(loc)] if x and x != "nan")
+            if meta:
+                lines.append(f"*{meta}*")
+            lines.append("")
+            lines.append(rationale)
+            lines.append("")
 
     md_path = os.path.join(output_dir, "investor_brief.md")
     with open(md_path, "w", encoding="utf-8") as f:
