@@ -216,3 +216,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Project-specific ---
+# Don't commit raw Specter exports (proprietary data) or intermediate files
+data/input/*.xlsx
+data/input/*.csv
+data/output/*.csv
+
+# But DO keep the folder structure and the final deliverables
+!data/input/.gitkeep
+!data/output/.gitkeep
+!output/

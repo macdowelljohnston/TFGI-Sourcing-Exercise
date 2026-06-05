@@ -1,0 +1,46 @@
+{
+    "weights": {
+      "stage_fit": 0.25,
+      "sector_alignment": 0.25,
+      "founder_signal": 0.25,
+      "growth_momentum": 0.25
+    },
+    "target_stages": [
+      "Early Stage",
+      "Growth Stage"
+    ],
+    "target_sectors": [
+      "Transportation",
+      "Manufacturing",
+      "Automotive",
+      "Aerospace",
+      "Defense",
+      "Logistics",
+      "Robotics",
+      "Physical AI",
+      "Space",
+      "Aviation",
+      "Maritime"
+    ],
+    "founder_tag_scores": {
+      "Prior Exit": 0.35,
+      "Prior IPO": 0.35,
+      "Serial Founder": 0.25,
+      "Unicorn Experience": 0.20,
+      "Prior VC-Backed Founder": 0.15,
+      "Fortune 500 Experience": 0.10,
+      "Top University": 0.10,
+      "Strong Technical Background": 0.10,
+      "Strong Academic Background": 0.05,
+      "VC-Backed Founder": 0.05
+    },
+    "founder_normaliser": 1.5,
+    "momentum": {
+      "employee_growth_full_score_pct": 15,
+      "web_growth_full_score_pct": 30,
+      "funding_recent_months": 12,
+      "funding_mid_months": 24
+    },
+    "top_n_companies": 15,
+    "min_score_threshold": 0.4
+  }
