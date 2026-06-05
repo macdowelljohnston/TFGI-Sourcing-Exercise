@@ -1,46 +1,41 @@
 """
 score_companies.py
-Step 2 of the pipeline: score each cleaned company against Friedkin's
-investment criteria, using weights from config/scoring_weights.json.
-Outputs fit scores as integers 0-100 plus a qualification tier.
+Step 2 of the pipeline: score each cleaned company against Friedkin's criteria.
 
-See skills/02_qualification_scoring.md and skills/03_founder_assessment.md
-for the logic this implements. All tunable values live in the config file.
+See skills/02_qualification_scoring.md and skills/03_founder_assessment.md.
+Tunable values: pipeline_settings.json -> scoring.
 """
 
-import json
 import pandas as pd
 
-
-def load_config(path="config/scoring_weights.json"):
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+from load_settings import scoring_config
 
 
-def _stage_fit(stage, target_stages):
+def _stage_fit(stage, config):
     s = str(stage).strip()
-    if s in target_stages:
+    if s in config["target_stages"]:
         return 1.0
-    if s == "Pre-seed / Seed":
-        return 0.3
-    if s == "Late Stage":
-        return 0.2
-    return 0.0
+    partial = config.get("stage_partial_scores", {})
+    return float(partial.get(s, 0.0))
 
 
-def _sector_alignment(row, target_sectors):
-    text = " ".join(str(row.get(c, "")) for c in
-                    ["Industry", "Tech Vertical", "Sub-industry",
-                     "Description", "Tagline"]).lower()
-    matches = sum(1 for kw in target_sectors if kw.lower() in text)
-    if matches >= 2:
-        return 1.0
-    if matches == 1:
-        return 0.6
-    return 0.0
+def _sector_alignment(row, config):
+    cols = config.get("sector_text_columns",
+                       ["Industry", "Tech Vertical", "Sub-industry",
+                        "Description", "Tagline"])
+    text = " ".join(str(row.get(c, "")) for c in cols).lower()
+    matches = sum(1 for kw in config["target_sectors"] if kw.lower() in text)
+    sm = config.get("sector_match", {})
+    if matches >= sm.get("full_if_matches", 2):
+        return sm.get("full_score", 1.0)
+    if matches >= sm.get("partial_if_matches", 1):
+        return sm.get("partial_score", 0.6)
+    return sm.get("no_match_score", 0.0)
 
 
-def _founder_signal(highlights, tag_scores, normaliser):
+def _founder_signal(highlights, config):
+    tag_scores = config["founder_tag_scores"]
+    normaliser = config.get("founder_normaliser", 1.5)
     if not highlights:
         return 0.0
     tags = [t.strip() for t in str(highlights).split(",")]
@@ -53,20 +48,17 @@ def _clamp01(x):
 
 
 def _growth_momentum(row, m):
-    # Employee 6-month growth (percent) -> 0-1.
     emp = pd.to_numeric(row.get("Employee Monthly Growth6"), errors="coerce")
     emp = 0.0 if pd.isna(emp) else emp
     emp_score = _clamp01(emp / m["employee_growth_full_score_pct"])
 
-    # Web visits 6-month growth (percent) -> 0-1.
     web = pd.to_numeric(row.get("Web Visits Monthly Growth6"), errors="coerce")
     web = 0.0 if pd.isna(web) else web
     web_score = _clamp01(web / m["web_growth_full_score_pct"])
 
-    # Funding recency -> 0-1.
     lfd = row.get("Last Funding Date")
     if pd.isna(lfd):
-        recency = 0.1
+        recency = m.get("unknown_funding_recency", 0.1)
     else:
         months = (pd.Timestamp.now() - pd.Timestamp(lfd)).days / 30.0
         if months <= m["funding_recent_months"]:
@@ -76,7 +68,10 @@ def _growth_momentum(row, m):
         else:
             recency = 0.2
 
-    return 0.4 * emp_score + 0.3 * web_score + 0.3 * recency
+    ew = m.get("employee_weight", 0.4)
+    ww = m.get("web_weight", 0.3)
+    rw = m.get("recency_weight", 0.3)
+    return ew * emp_score + ww * web_score + rw * recency
 
 
 def _to_pct(x):
@@ -90,20 +85,17 @@ def _assign_tier(pct, tiers):
     return tiers[-1]["label"] if tiers else "Unranked"
 
 
-def score_dataframe(df, config):
+def score_dataframe(df, settings):
+    config = scoring_config(settings) if isinstance(settings, dict) and "scoring" in settings else settings
     w = config["weights"]
-    target_stages = config["target_stages"]
-    target_sectors = config["target_sectors"]
-    tag_scores = config["founder_tag_scores"]
-    normaliser = config.get("founder_normaliser", 1.5)
     m = config["momentum"]
     tiers = config.get("score_tiers", [])
 
     rows = []
     for _, row in df.iterrows():
-        stage = _stage_fit(row.get("Growth Stage"), target_stages)
-        sector = _sector_alignment(row, target_sectors)
-        founder = _founder_signal(row.get("Founder Highlights"), tag_scores, normaliser)
+        stage = _stage_fit(row.get("Growth Stage"), config)
+        sector = _sector_alignment(row, config)
+        founder = _founder_signal(row.get("Founder Highlights"), config)
         momentum = _growth_momentum(row, m)
         total = (stage * w["stage_fit"] + sector * w["sector_alignment"] +
                  founder * w["founder_signal"] + momentum * w["growth_momentum"])
@@ -119,16 +111,23 @@ def score_dataframe(df, config):
 
     scores = pd.DataFrame(rows, index=df.index)
     out = pd.concat([df, scores], axis=1)
-
     out = out[out["total_score"] >= config["min_score_threshold"]]
-    out = out.sort_values("total_score", ascending=False)
-    out = out.head(config["top_n_companies"]).reset_index(drop=True)
+    out = out.sort_values("total_score", ascending=False).reset_index(drop=True)
     return out
+
+
+def brief_shortlist(ranked, settings):
+    """Top N companies for the investor brief (full scored set may be larger)."""
+    config = scoring_config(settings) if isinstance(settings, dict) and "scoring" in settings else settings
+    n = config.get("top_n_companies", 15)
+    return ranked.head(n).reset_index(drop=True)
 
 
 if __name__ == "__main__":
     from clean_data import load_and_clean
-    cfg = load_config()
-    cleaned = load_and_clean()
-    ranked = score_dataframe(cleaned, cfg)
-    print(ranked[["Company Name", "total_score", "qualification_tier"]].to_string())
+    from load_settings import load_settings
+
+    settings = load_settings()
+    cleaned = load_and_clean(settings=settings)
+    ranked = score_dataframe(cleaned, settings)
+    print(ranked[["Company Name", "total_score", "qualification_tier"]].head(15).to_string())

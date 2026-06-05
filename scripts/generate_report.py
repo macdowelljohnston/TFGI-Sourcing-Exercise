@@ -1,15 +1,17 @@
 """
 generate_report.py
-Step 3 of the pipeline: turn the ranked dataframe into an investor-ready
-brief (Markdown) plus a scored CSV. Follows skills/06_brief_document_standard.md.
+Step 4 of the pipeline: investor brief (Markdown) plus full scored CSV.
 
-All generated text is normalised to plain ASCII punctuation (no smart quotes,
-no em-dashes) and written as UTF-8, so the output never shows mojibake.
-build_summary() is the single source of the summary content (md + docx).
+See skills/04_screening_summary.md and skills/06_brief_document_standard.md.
+Tunable values: pipeline_settings.json -> rationale, report, scoring.
 """
 
 import os
 import pandas as pd
+
+from load_settings import get_section, scoring_config
+from load_skill import load_prompt, fill_prompt
+from score_companies import brief_shortlist
 
 _PUNCT = {
     "\u2014": "-", "\u2013": "-", "\u2012": "-", "\u2010": "-",
@@ -20,7 +22,6 @@ _PUNCT = {
 
 
 def _fix_mojibake(s):
-    """Reverse classic UTF-8-read-as-cp1252 corruption (e.g. 'â€™' -> apostrophe)."""
     if "â€" in s or "Ã" in s or "â" in s:
         try:
             return s.encode("cp1252", errors="strict").decode("utf-8", errors="strict")
@@ -30,7 +31,6 @@ def _fix_mojibake(s):
 
 
 def clean_text(s):
-    """Repair mojibake, then normalise any unicode punctuation to plain ASCII."""
     s = _fix_mojibake(str(s or ""))
     for bad, good in _PUNCT.items():
         s = s.replace(bad, good)
@@ -66,35 +66,33 @@ def _clean_domain(row):
     return d.replace("https://", "").replace("http://", "").replace("www.", "").strip("/")
 
 
-def _matched_sectors(row, target_sectors):
-    text = " ".join(str(row.get(c, "")) for c in
-                    ["Industry", "Tech Vertical", "Sub-industry", "Description", "Tagline"]).lower()
+def _matched_sectors(row, target_sectors, cols=None):
+    cols = cols or ["Industry", "Tech Vertical", "Sub-industry", "Description", "Tagline"]
+    text = " ".join(str(row.get(c, "")) for c in cols).lower()
     return [kw for kw in target_sectors if kw.lower() in text]
 
 
-def build_summary(ranked, config, style):
+def build_summary(ranked, scoring_cfg, style):
     """Compute the Portfolio Summary content (shared by md + docx)."""
-    total = len(ranked)
-
-    tier_order = [clean_text(t["label"]) for t in config.get("score_tiers", [])]
+    tier_order = [clean_text(t["label"]) for t in scoring_cfg.get("score_tiers", [])]
     raw_tiers = ranked["qualification_tier"].apply(clean_text)
     tier_counts = {t: int((raw_tiers == t).sum()) for t in tier_order}
     tier_counts = {t: n for t, n in tier_counts.items() if n > 0}
 
     sector_tally = {}
+    cols = scoring_cfg.get("sector_text_columns")
     for _, row in ranked.iterrows():
-        for s in _matched_sectors(row, config["target_sectors"]):
+        for s in _matched_sectors(row, scoring_cfg["target_sectors"], cols):
             sector_tally[s] = sector_tally.get(s, 0) + 1
     top_sectors = sorted(sector_tally.items(), key=lambda kv: kv[1], reverse=True)
     top_sectors = top_sectors[:style.get("max_sectors_in_summary", 5)]
 
     stage_counts = ranked["Growth Stage"].value_counts().to_dict()
-
     n_picks = style.get("top_picks_count", 3)
     picks = [clean_text(r.get("Company Name", "")) for _, r in ranked.head(n_picks).iterrows()]
 
     return {
-        "total": total,
+        "total": len(ranked),
         "tiers_str": ", ".join(f"{n} {t}" for t, n in tier_counts.items()),
         "sectors_str": ", ".join(f"{k} ({v})" for k, v in top_sectors),
         "stages_str": ", ".join(f"{k} ({v})" for k, v in stage_counts.items()),
@@ -102,105 +100,119 @@ def build_summary(ranked, config, style):
     }
 
 
-def _template_rationale(row):
-    """Deterministic, specific rationale grounded in the actual data (ASCII)."""
+def _template_rationale(row, rationale_cfg):
+    """Deterministic rationale driven by pipeline_settings.json -> rationale."""
     name = clean_text(row.get("Company Name", "This company"))
+    max_chars = rationale_cfg.get("max_description_chars", 220)
     desc = clean_text(row.get("Description") or row.get("Tagline") or "").strip()
     if desc.lower().startswith(name.lower()):
         desc = desc[len(name):].lstrip(" -:,").strip()
         desc = desc[0].upper() + desc[1:] if desc else desc
-    if len(desc) > 220:
-        desc = desc[:217].rstrip() + "..."
-
-    total_funding = _fmt_usd(row.get("Total Funding Amount (in USD)"))
-    last_type = clean_text(row.get("Last Funding Type", ""))
-    last_date = _fmt_date(row.get("Last Funding Date"))
-    emp = row.get("Employee Count", "")
-    emp_g = row.get("Employee Monthly Growth6")
-    web_g = row.get("Web Visits Monthly Growth6")
-    tags = clean_text(row.get("Founder Highlights", ""))
+    if len(desc) > max_chars:
+        desc = desc[: max_chars - 3].rstrip() + "..."
 
     parts = [f"{name}. {desc}" if desc else f"{name}."]
 
-    fund_bits = []
-    if total_funding != "n/a":
-        fund_bits.append(f"has raised {total_funding} to date")
-    if last_type:
-        fund_bits.append(f"most recently a {last_type} round ({last_date})")
-    if fund_bits:
-        parts.append("It " + ", ".join(fund_bits) + ".")
+    if rationale_cfg.get("include_funding_section", True):
+        total_funding = _fmt_usd(row.get("Total Funding Amount (in USD)"))
+        last_type = clean_text(row.get("Last Funding Type", ""))
+        last_date = _fmt_date(row.get("Last Funding Date"))
+        fund_bits = []
+        if total_funding != "n/a":
+            fund_bits.append(f"has raised {total_funding} to date")
+        if last_type:
+            fund_bits.append(f"most recently a {last_type} round ({last_date})")
+        if fund_bits:
+            parts.append("It " + ", ".join(fund_bits) + ".")
 
-    growth_bits = []
-    if pd.notna(emp_g):
-        growth_bits.append(f"{emp_g:+.0f}% headcount growth (6mo)")
-    if pd.notna(web_g):
-        growth_bits.append(f"{web_g:+.0f}% web traffic growth (6mo)")
-    if emp not in ("", None) and not pd.isna(emp):
-        growth_bits.append(f"~{int(emp)} employees")
-    if growth_bits:
-        parts.append("Signals: " + ", ".join(growth_bits) + ".")
+    if rationale_cfg.get("include_growth_signals", True):
+        emp = row.get("Employee Count", "")
+        emp_g = row.get("Employee Monthly Growth6")
+        web_g = row.get("Web Visits Monthly Growth6")
+        growth_bits = []
+        if pd.notna(emp_g):
+            growth_bits.append(f"{emp_g:+.0f}% headcount growth (6mo)")
+        if pd.notna(web_g):
+            growth_bits.append(f"{web_g:+.0f}% web traffic growth (6mo)")
+        if emp not in ("", None) and not pd.isna(emp):
+            growth_bits.append(f"~{int(emp)} employees")
+        if growth_bits:
+            parts.append("Signals: " + ", ".join(growth_bits) + ".")
 
-    if tags:
-        key_tags = [t.strip() for t in tags.split(",")
-                    if t.strip() in ("Prior Exit", "Prior IPO", "Serial Founder",
-                                     "Unicorn Experience", "Top University")]
-        if key_tags:
-            parts.append("Founder signal: " + ", ".join(key_tags) + ".")
+    if rationale_cfg.get("include_founder_tags", True):
+        tags = clean_text(row.get("Founder Highlights", ""))
+        highlight = rationale_cfg.get("founder_tags_to_highlight", [])
+        if tags and highlight:
+            key_tags = [t.strip() for t in tags.split(",") if t.strip() in highlight]
+            if key_tags:
+                parts.append("Founder signal: " + ", ".join(key_tags) + ".")
 
-    parts.append(
-        f"Scores: Stage {int(row['stage_score'])}, Sector {int(row['sector_score'])}, "
-        f"Founder {int(row['founder_score'])}, Momentum {int(row['momentum_score'])}.")
+    if rationale_cfg.get("include_score_breakdown", True):
+        parts.append(
+            f"Scores: Stage {int(row['stage_score'])}, Sector {int(row['sector_score'])}, "
+            f"Founder {int(row['founder_score'])}, Momentum {int(row['momentum_score'])}.")
     return " ".join(parts)
 
 
-def _llm_rationale(row):
+def _llm_rationale(row, scoring_cfg):
     import anthropic
+
+    template = load_prompt("04_screening_summary.md")
+    mapping = {
+        "company_name": clean_text(row.get("Company Name", "")),
+        "description": clean_text(row.get("Description", "")),
+        "growth_stage": clean_text(row.get("Growth Stage", "")),
+        "total_funding": _fmt_usd(row.get("Total Funding Amount (in USD)")),
+        "last_funding_type": clean_text(row.get("Last Funding Type", "")),
+        "last_funding_date": _fmt_date(row.get("Last Funding Date")),
+        "founders": clean_text(row.get("Founders", "")),
+        "founder_highlights": clean_text(row.get("Founder Highlights", "")),
+        "employee_count": row.get("Employee Count", ""),
+        "employee_growth_6m": row.get("Employee Monthly Growth6", ""),
+        "web_visits": row.get("Web Visits", ""),
+        "web_growth_6m": row.get("Web Visits Monthly Growth6", ""),
+        "total_score": int(row.get("total_score", 0)),
+        "qualification_tier": clean_text(row.get("qualification_tier", "")),
+        "stage_score": int(row.get("stage_score", 0)),
+        "sector_score": int(row.get("sector_score", 0)),
+        "founder_score": int(row.get("founder_score", 0)),
+        "momentum_score": int(row.get("momentum_score", 0)),
+    }
+    prompt = fill_prompt(template, mapping)
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    prompt = f"""You are a senior analyst at a venture capital firm focused on
-Transportation, Manufacturing, Physical AI, Automotive, and Aerospace & Defense.
-Write a 3-5 sentence investor rationale for {row.get('Company Name')}.
-Be specific, reference the actual data, no generic VC language, no em-dashes.
-
-- Description: {row.get('Description')}
-- Stage: {row.get('Growth Stage')}
-- Total Funding: {_fmt_usd(row.get('Total Funding Amount (in USD)'))}
-- Last Funding: {row.get('Last Funding Type')} ({_fmt_date(row.get('Last Funding Date'))})
-- Founder Highlights: {row.get('Founder Highlights')}
-- Score: {row.get('total_score')}/100
-
-Return only the rationale paragraph."""
-    msg = client.messages.create(model="claude-sonnet-4-20250514", max_tokens=400,
-                                 messages=[{"role": "user", "content": prompt}])
+    msg = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=400,
+        messages=[{"role": "user", "content": prompt}],
+    )
     return clean_text(msg.content[0].text.strip())
 
 
-def _load_style(path="config/report_style.json"):
-    import json
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
-
-def generate_report(ranked, config, output_dir="output", use_llm=False):
+def generate_report(ranked_full, settings, output_dir="output", use_llm=False):
     os.makedirs(output_dir, exist_ok=True)
-    style = _load_style()
+    scoring_cfg = scoring_config(settings)
+    style = get_section(settings, "report")
+    rationale_cfg = get_section(settings, "rationale")
 
-    ranked.to_csv(os.path.join(output_dir, "scored_companies.csv"), index=False)
+    ranked_full.to_csv(os.path.join(output_dir, "scored_companies.csv"), index=False)
+    brief = brief_shortlist(ranked_full, settings)
 
     title = clean_text(style.get("title", "Weekly Sourcing Brief"))
     subtitle = clean_text(style.get("subtitle", ""))
+    min_score = scoring_cfg["min_score_threshold"]
 
     L = [f"# {title}"]
     if subtitle:
         L.append(f"### {subtitle}")
     L.append("")
-    L.append(f"Top {len(ranked)} qualified companies (minimum score {config['min_score_threshold']}).")
+    L.append(
+        f"Top {len(brief)} qualified companies (minimum score {min_score}). "
+        f"Full scored list: {len(ranked_full)} companies in scored_companies.csv."
+    )
     L.append("")
 
     if style.get("show_summary_section", True):
-        s = build_summary(ranked, config, style)
+        s = build_summary(brief, scoring_cfg, style)
         L.append("## Portfolio Summary")
         L.append("")
         L.append("| Breakdown | Detail |")
@@ -214,27 +226,34 @@ def generate_report(ranked, config, output_dir="output", use_llm=False):
     L.append("---")
     L.append("")
 
-    for i, row in ranked.iterrows():
+    for i, row in brief.iterrows():
         tier = clean_text(row.get("qualification_tier", ""))
         name = clean_text(row.get("Company Name", ""))
         header = f"## {i+1}. {name}  |  Score {int(row['total_score'])}"
         if tier:
             header += f"  ({tier})"
         L.append(header)
-        meta = " | ".join(x for x in [clean_text(row.get('Growth Stage', '')),
-                                       clean_text(row.get('Industry', '')),
-                                       clean_text(row.get('HQ Location', ''))]
-                          if x and x != "nan")
+        meta = " | ".join(x for x in [
+            clean_text(row.get("Growth Stage", "")),
+            clean_text(row.get("Industry", "")),
+            clean_text(row.get("HQ Location", "")),
+        ] if x and x != "nan")
         if meta:
             L.append(f"*{meta}*")
         dom = _clean_domain(row)
         if dom:
             L.append(f"**Website:** [{dom}](https://{dom})")
         L.append("")
-        L.append(_llm_rationale(row) if use_llm else _template_rationale(row))
+        if use_llm:
+            L.append(_llm_rationale(row, scoring_cfg))
+        else:
+            L.append(_template_rationale(row, rationale_cfg))
         L.append("")
         if "outreach_action" in row and pd.notna(row.get("outreach_action")):
-            L.append(f"**Action:** {clean_text(row['outreach_action'])}. {clean_text(row.get('timing_note', ''))}")
+            L.append(
+                f"**Action:** {clean_text(row['outreach_action'])}. "
+                f"{clean_text(row.get('timing_note', ''))}"
+            )
             L.append("")
             steps = clean_text(row.get("diligence_steps", "")).split(" | ")
             if steps and steps[0]:
@@ -247,14 +266,18 @@ def generate_report(ranked, config, output_dir="output", use_llm=False):
     with open(md_path, "w", encoding="utf-8") as f:
         f.write("\n".join(L))
 
-    print(f"  Wrote {os.path.join(output_dir, 'scored_companies.csv')}")
-    print(f"  Wrote {md_path}")
-    return md_path
+    print(f"  Wrote {os.path.join(output_dir, 'scored_companies.csv')} ({len(ranked_full)} rows)")
+    print(f"  Wrote {md_path} ({len(brief)} companies in brief)")
+    return md_path, brief
 
 
 if __name__ == "__main__":
     from clean_data import load_and_clean
-    from score_companies import load_config, score_dataframe
-    cfg = load_config()
-    ranked = score_dataframe(load_and_clean(), cfg)
-    generate_report(ranked, cfg)
+    from score_companies import score_dataframe
+    from recommend_actions import add_recommendations
+    from load_settings import load_settings
+
+    settings = load_settings()
+    ranked = add_recommendations(
+        score_dataframe(load_and_clean(settings=settings), settings), settings)
+    generate_report(ranked, settings)

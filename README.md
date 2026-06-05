@@ -13,7 +13,7 @@ Built to be **re-run every week** when a fresh export drops in — and to be
 
 ```powershell
 # 1. Install dependencies (once)
-pip install pandas openpyxl
+pip install pandas openpyxl python-docx
 
 # 2. Drop the latest Specter export into data/input/
 
@@ -21,127 +21,150 @@ pip install pandas openpyxl
 python scripts/run_pipeline.py
 ```
 
-Results appear in `output/`:
-- `investor_brief.md` — the ranked shortlist with a rationale per company
-- `scored_companies.csv` — full scores and sub-scores for every qualified company
+Results appear in `output/<filename>_<date>/`:
+- `scored_companies.csv` — all companies above the score threshold
+- `investor_brief.md` — top N ranked names with rationale and actions
+- `investor_brief.docx` — Word version (also copied to Desktop when found)
 
 ---
 
 ## How it works
 
-The workflow is a three-stage pipeline. Each stage is a separate script, and
-each script implements the logic described in a matching **skill file** in
-`/skills/`. The skill files are plain-English specs; the scripts are the
-executable version. This keeps the *logic* (editable by anyone) separate from
-the *implementation* (only touched when behaviour needs to change).
+Four pipeline steps plus optional Word export. Each step maps to a **skill file**
+in `/skills/` (human-readable spec) and a **config section** in
+`config/pipeline_settings.json` (machine-readable rules).
 
 ```
 data/input/*.xlsx
-       │
-       ▼
-[1] clean_data.py        ← skills/01_data_cleaning.md
-       │   selects relevant columns, normalises funding/dates/text,
-       │   dedupes, drops inactive companies
-       ▼
-[2] score_companies.py   ← skills/02_qualification_scoring.md
-       │   scores each company 0–100 on four weighted dimensions,
-       │   assigns a tier, filters and ranks
-       ▼
-[3] generate_report.py   ← skills/04_screening_summary.md
-       │   writes a data-grounded rationale per company
-       ▼
-output/investor_brief.md + scored_companies.csv
+       |
+       v
+[1] clean_data.py         <- skills/01  |  config: cleaning
+       |
+       v
+[2] score_companies.py    <- skills/02-03  |  config: scoring
+       |
+       v
+[3] recommend_actions.py  <- skills/05  |  config: actions
+       |
+       v
+[4] generate_report.py    <- skills/04, 06  |  config: rationale, report
+       |
+       +--> export_word.py (optional)
+       v
+output/<run>/investor_brief.md + scored_companies.csv [+ .docx]
 ```
 
-`run_pipeline.py` is the single entry point that runs all three in order.
+`run_pipeline.py` is the single entry point.
 
 ---
 
-## The four modules (skills)
+## The six modules (skills)
 
-Each file in `/skills/` does one job and is independently editable.
+| Skill | Config section | Job |
+|-------|----------------|-----|
+| `01_data_cleaning.md` | `cleaning` | Columns, filters, normalisation |
+| `02_qualification_scoring.md` | `scoring` | Four-dimension score and tiers |
+| `03_founder_assessment.md` | `scoring` | Founder tags from Specter |
+| `04_screening_summary.md` | `rationale` | Per-company rationale (+ LLM prompt) |
+| `05_action_recommendation.md` | `actions` | Outreach, timing, diligence |
+| `06_brief_document_standard.md` | `report` | Brief layout and Word style |
 
-| File | Job |
-|------|-----|
-| `01_data_cleaning.md` | Which columns to keep and how to normalise them |
-| `02_qualification_scoring.md` | The scoring rubric and how the four dimensions combine |
-| `03_founder_assessment.md` | How founder quality is derived from Specter's founder tags |
-| `04_screening_summary.md` | How each company's rationale is written |
+See [skills/README.md](skills/README.md) and [config/README.md](config/README.md).
+
+---
 
 ## The scoring model
 
-Every company gets four sub-scores (each **0–100**), combined using weights from
-`config/scoring_weights.json`, plus a **qualification tier** (e.g. Tier 1 — Priority):
+Every company gets four sub-scores (0–100), combined using `scoring.weights`:
 
 | Dimension | What it measures |
 |-----------|------------------|
-| **Stage fit** | Is the company in a target stage (Series A–C / Early–Growth)? |
-| **Sector alignment** | Does it match Friedkin's focus sectors (keyword match on industry + description)? |
-| **Founder signal** | Founder pedigree, derived from Specter's structured founder tags (Prior Exit, Serial Founder, Unicorn Experience, etc.) |
-| **Growth momentum** | Headcount growth + web traffic growth + funding recency |
+| **Stage fit** | Target stages (Early / Growth) vs partial credit for others |
+| **Sector alignment** | Keyword match on industry and description |
+| **Founder signal** | Specter founder tags (Prior Exit, Serial Founder, etc.) |
+| **Growth momentum** | Headcount + web growth + funding recency |
 
 ```
-total_score (0–100) = round(100 × (stage·w1 + sector·w2 + founder·w3 + momentum·w4))
+total_score = round(100 x (stage*w1 + sector*w2 + founder*w3 + momentum*w4))
 ```
 
-Tier labels come from `score_tiers` in the config (default: Priority 92+, Strong 88+, Qualified 40+).
+Tier labels come from `scoring.score_tiers` (default: Priority 92+, Strong 88+, Qualified 40+).
 
 ---
 
 ## How to update the system (no code required)
 
-**All tuning happens in one file: `config/scoring_weights.json`.**
+**All tuning is in one file: `config/pipeline_settings.json`.**
 
-| To do this… | Edit this in the config |
-|-------------|--------------------------|
-| Re-weight the four dimensions | `weights` (values should sum to 1.0) |
-| Add/remove a target sector | `target_sectors` |
-| Change which stages qualify | `target_stages` |
-| Change how founder tags score | `founder_tag_scores` |
-| Change the shortlist length | `top_n_companies` |
-| Change the cutoff for inclusion | `min_score_threshold` (0–100, default 40) |
-| Change tier labels and bands | `score_tiers` |
+| To do this... | Edit this section |
+|---------------|-------------------|
+| Change columns or filters | `cleaning` |
+| Re-weight dimensions | `scoring.weights` (sum to 1.0) |
+| Add/remove sectors or stages | `scoring.target_sectors`, `target_stages` |
+| Change founder tag points | `scoring.founder_tag_scores` |
+| Change shortlist length | `scoring.top_n_companies` |
+| Change score cutoff | `scoring.min_score_threshold` |
+| Change tier bands | `scoring.score_tiers` |
+| Change outreach / diligence | `actions` |
+| Change rationale text | `rationale` |
+| Change brief title / colours | `report` |
 
-After editing, just re-run `python scripts/run_pipeline.py`. No code changes needed.
+After editing, re-run:
+
+```powershell
+python scripts/run_pipeline.py
+```
+
+### Live demo (walkthrough script)
+
+Everything the interviewer may ask you to change lives in **`config/pipeline_settings.json`**. Re-run with:
+
+```powershell
+python scripts/run_pipeline.py
+```
+
+Keep your Specter file in `data/input/` and re-run after each config edit. Full cheat sheet: [DEMO.md](DEMO.md).
+
+| They ask to change… | Config path | Effect |
+|---------------------|-------------|--------|
+| **Scoring weight** | `scoring.weights` (must sum to 1.0) | Re-orders top 15 in the brief |
+| **Sector** | `scoring.target_sectors` | Changes `sector_score` and sector summary |
+| **Filter** | `scoring.min_score_threshold` or `scoring.target_stages` | Fewer/more qualified companies |
+| Outreach tiers (bonus) | `actions.reach_out_threshold` | Tier 1 vs Tier 2 action lines |
+
+**Suggested live tweak:** set `founder_signal` to `0.35` and `growth_momentum` to `0.15`, re-run, show Top 5 in the terminal and `output/<run>/investor_brief.md`.
+
+### Optional LLM rationales
+```powershell
+python scripts/run_pipeline.py --use-llm
+```
+Requires `ANTHROPIC_API_KEY`. Uses the prompt in `skills/04_screening_summary.md`.
 
 ### Running on a new week's export
-1. Drop the new Specter file into `data/input/` (the pipeline auto-picks the newest file)
-2. Run `python scripts/run_pipeline.py`
-3. Read `output/investor_brief.md`
+1. Drop the new Specter file into `data/input/` (newest file is picked automatically).
+2. Run `python scripts/run_pipeline.py`.
+3. Open `output/<latest_run>/investor_brief.md`.
+
+Input files remain in `data/input/` after each run. Use `data/input/archive/` only if you move old exports there manually.
 
 ---
 
 ## Tool choices (and why)
 
-- **Python + pandas** for the pipeline — the cleaning, scoring, and ranking are
-  deterministic, auditable, and identical every run. A spreadsheet would be
-  fragile across a 200-column weekly export; a pure-LLM approach would be
-  non-reproducible and slow over 150 rows.
-  - **Cursor (or VSCode)** plus Agent aid. Allows non-technical user to articulate goals to the agent build.
-- **A JSON config file** for all tunable values — so a non-technical user can
-  change the model without reading code, which is exactly the "edit and re-run"
-  requirement.
-- **Markdown skill files** as the human-readable spec for each module — they
-  document intent and double as editable prompts.
-- **Founder scoring is rule-based on Specter's own founder tags**, not a fresh
-  LLM parse. The tags (`Prior Exit`, `Serial Founder`, etc.) are already
-  structured, so scoring them directly is faster, free, fully reproducible, and
-  has no API dependency — which matters for a tool that runs weekly.
-- **Optional LLM rationales**: `generate_report.py` writes data-grounded
-  rationales deterministically by default. Passing `--use-llm` (with an
-  `ANTHROPIC_API_KEY` set) swaps in Claude-written rationales using the prompt
-  in `skills/04_screening_summary.md`.
+- **Python + pandas** — deterministic, auditable cleaning and scoring across ~150 rows weekly.
+- **Single JSON config** — non-technical users change criteria without reading code.
+- **Markdown skills** — modular documentation; skill 04 doubles as the LLM prompt source.
+- **Rule-based founder tags** — reproducible, no API cost; Specter already structures highlights.
+- **Optional Claude** — `--use-llm` for richer rationales when desired.
 
 ---
 
 ## A note on the data
 
 This Specter extract is **pre-filtered to Friedkin's sectors and stages**, so
-nearly every company scores ~100% on stage fit and sector alignment — those axes
-don't discriminate much *within* this list. The meaningful differentiation comes
-from **founder signal** and **growth momentum**, which is where the ranking
-actually separates companies. The four-dimension model is kept intact so the
-same pipeline still works correctly on a less-filtered export.
+many companies score ~100 on stage and sector. Differentiation within the list
+comes mainly from **founder signal** and **growth momentum**. The four-dimension
+model still applies correctly on a broader export.
 
 ---
 
@@ -150,21 +173,27 @@ same pipeline still works correctly on a less-filtered export.
 ```
 TFGI-Sourcing-Exercise/
 ├── config/
-│   └── scoring_weights.json     # all tunable knobs live here
-├── skills/                      # plain-English spec for each module
+│   ├── pipeline_settings.json   # all tunable knobs
+│   └── README.md
+├── skills/                      # one module per pipeline step
 │   ├── 01_data_cleaning.md
 │   ├── 02_qualification_scoring.md
 │   ├── 03_founder_assessment.md
 │   ├── 04_screening_summary.md
+│   ├── 05_action_recommendation.md
+│   ├── 06_brief_document_standard.md
 │   └── README.md
-├── scripts/                     # the executable pipeline
+├── scripts/
+│   ├── load_settings.py
+│   ├── load_skill.py
 │   ├── clean_data.py
 │   ├── score_companies.py
+│   ├── recommend_actions.py
 │   ├── generate_report.py
+│   ├── export_word.py
 │   └── run_pipeline.py
 ├── data/
-│   ├── input/                   # drop weekly Specter export here
-│   └── output/                  # cleaned_data.csv (intermediate)
-├── output/                      # investor_brief.md + scored_companies.csv
-└── README.md
+│   ├── input/                   # drop weekly export here
+│   └── output/                  # cleaned_data.csv
+└── output/                      # dated run folders
 ```

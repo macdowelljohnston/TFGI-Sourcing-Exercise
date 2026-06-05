@@ -1,15 +1,13 @@
 """
 recommend_actions.py
-Step 4 of the pipeline: for each qualified company, recommend a concrete
-next action -- an outreach call and a tailored set of diligence steps.
+Step 3 of the pipeline: outreach action, timing note, and diligence steps.
 
-Rule-based and deterministic (no API key). Thresholds are read from
-config/scoring_weights.json -> "actions" (with sensible defaults if absent).
-
-See skills/05_action_recommendation.md for the logic this implements.
+See skills/05_action_recommendation.md. Tunable values: pipeline_settings.json -> actions.
 """
 
 import pandas as pd
+
+from load_settings import get_section
 
 
 def _months_since(date):
@@ -18,63 +16,91 @@ def _months_since(date):
     return (pd.Timestamp.now() - pd.Timestamp(date)).days / 30.0
 
 
-def _outreach_action(score, cfg_actions):
-    reach = cfg_actions.get("reach_out_threshold", 0.90)
-    review = cfg_actions.get("partner_review_threshold", 0.80)
+def _outreach_action(score, cfg):
+    labels = cfg.get("outreach_labels", {})
+    reach = cfg.get("reach_out_threshold", 92)
+    review = cfg.get("partner_review_threshold", 88)
     if score >= reach:
-        return "Reach out now (Tier 1)"
+        return labels.get("tier1", "Reach out now (Tier 1)")
     if score >= review:
-        return "Schedule partner review (Tier 2)"
-    return "Monitor (Tier 3)"
+        return labels.get("tier2", "Schedule partner review (Tier 2)")
+    return labels.get("tier3", "Monitor (Tier 3)")
 
 
-def _timing_note(months):
+def _timing_note(months, cfg):
     if months is None:
-        return "Funding date unknown — confirm last round before engaging."
+        return cfg.get("timing_unknown_message",
+                       "Funding date unknown — confirm last round before engaging.")
     m = int(round(months))
-    if months < 9:
-        return f"Raised ~{m}mo ago — build the relationship now, ahead of the next round."
-    if months <= 20:
-        return f"~{m}mo since last raise — likely approaching a new round; strong time to engage."
-    return f"~{m}mo since last raise — may be raising soon or capital-efficient; worth a direct conversation."
+    for band in cfg.get("timing_bands", []):
+        max_m = band.get("max_months")
+        if max_m is None or months <= max_m:
+            return band["message"].format(months=m)
+    return cfg.get("timing_bands", [{}])[-1].get("message", "").format(months=m)
 
 
-def _diligence_steps(row):
-    """Tailor diligence to each company's weak spots and data gaps."""
-    steps = ["Validate founder track record and prior exit outcomes."]
-
-    if row.get("sector_score", 1.0) < 1.0:
-        steps.append("Confirm core technology and fit with target sectors.")
-
-    if row.get("momentum_score", 1.0) < 0.7:
-        steps.append("Investigate soft growth signals (headcount / web traffic).")
-
+def _rule_context(row):
+    """Build field values for diligence rule evaluation."""
     months = _months_since(row.get("Last Funding Date"))
-    if months is not None and months > 20:
-        steps.append("Confirm current runway, burn rate, and timeline to next raise.")
-
     web = pd.to_numeric(row.get("Web Visits"), errors="coerce")
-    if pd.isna(web) or web == 0:
-        steps.append("Pull fresh traction data — web/product usage is sparse in this export.")
+    return {
+        "sector_score": row.get("sector_score"),
+        "momentum_score": row.get("momentum_score"),
+        "months_since_funding": months,
+        "web_visits": None if pd.isna(web) or web == 0 else float(web),
+    }
 
-    # Standard closers, added until we have a useful set.
-    for s in ("Assess market size and competitive landscape.",
-              "Review cap table and quality of existing investors."):
-        if len(steps) >= 5:
+
+def _eval_rule(rule, ctx):
+    if rule.get("always"):
+        return True
+    field = rule.get("field")
+    op = rule.get("op")
+    value = rule.get("value")
+    actual = ctx.get(field)
+
+    if op == "missing":
+        return actual is None
+    if actual is None:
+        return False
+    if op == "lt":
+        return actual < value
+    if op == "gt":
+        return actual > value
+    if op == "lte":
+        return actual <= value
+    if op == "gte":
+        return actual >= value
+    if op == "eq":
+        return actual == value
+    return False
+
+
+def _diligence_steps(row, cfg):
+    steps = []
+    ctx = _rule_context(row)
+    for rule in cfg.get("diligence_rules", []):
+        if _eval_rule(rule, ctx):
+            steps.append(rule["step"])
+
+    max_steps = cfg.get("max_diligence_steps", 5)
+    for s in cfg.get("diligence_closers", []):
+        if len(steps) >= max_steps:
             break
-        steps.append(s)
+        if s not in steps:
+            steps.append(s)
 
-    return steps[:5]
+    return steps[:max_steps]
 
 
-def add_recommendations(ranked, config):
-    cfg_actions = config.get("actions", {})
+def add_recommendations(ranked, settings):
+    cfg = get_section(settings, "actions")
     out = ranked.copy()
     actions, timings, diligence = [], [], []
     for _, row in out.iterrows():
-        actions.append(_outreach_action(row["total_score"], cfg_actions))
-        timings.append(_timing_note(_months_since(row.get("Last Funding Date"))))
-        diligence.append(" | ".join(_diligence_steps(row)))
+        actions.append(_outreach_action(row["total_score"], cfg))
+        timings.append(_timing_note(_months_since(row.get("Last Funding Date")), cfg))
+        diligence.append(" | ".join(_diligence_steps(row, cfg)))
     out["outreach_action"] = actions
     out["timing_note"] = timings
     out["diligence_steps"] = diligence
@@ -83,8 +109,10 @@ def add_recommendations(ranked, config):
 
 if __name__ == "__main__":
     from clean_data import load_and_clean
-    from score_companies import load_config, score_dataframe
-    cfg = load_config()
-    ranked = score_dataframe(load_and_clean(), cfg)
-    enriched = add_recommendations(ranked, cfg)
-    print(enriched[["Company Name", "outreach_action", "diligence_steps"]].to_string())
+    from score_companies import score_dataframe
+    from load_settings import load_settings
+
+    settings = load_settings()
+    ranked = score_dataframe(load_and_clean(settings=settings), settings)
+    enriched = add_recommendations(ranked, settings)
+    print(enriched[["Company Name", "outreach_action", "diligence_steps"]].head(10).to_string())

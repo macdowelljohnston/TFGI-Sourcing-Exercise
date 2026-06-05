@@ -1,12 +1,30 @@
 # Skill: Screening Summary
 
 ## Purpose
-Use Claude to generate a concise, investor-ready rationale for each
-top-ranked company. Output is used directly in the final brief.
+Produce a concise, investor-ready rationale for each company in the weekly brief.
 
-## Input
-A single company's cleaned data row, including name, description,
-funding, founders, growth signals, and total score.
+**Default:** deterministic template driven by `pipeline_settings.json` → `rationale`.  
+**Optional:** Claude-written rationales via `--use-llm` using the prompt below.
+
+## Config section (default mode)
+Edit **`config/pipeline_settings.json`** → **`rationale`**
+
+| Key | What it controls |
+|-----|------------------|
+| `max_description_chars` | Truncate company description in the rationale |
+| `founder_tags_to_highlight` | Which founder tags to mention in the text |
+| `include_funding_section` | Include raised amount and last round |
+| `include_growth_signals` | Include headcount / web / employee count |
+| `include_founder_tags` | Mention highlighted founder tags |
+| `include_score_breakdown` | Append Stage / Sector / Founder / Momentum scores |
+
+## Editing this skill
+1. **Template output:** edit `rationale` in `config/pipeline_settings.json`.
+2. **LLM output:** edit the Prompt Template below, then run with `--use-llm` and `ANTHROPIC_API_KEY` set.
+
+```powershell
+python scripts/run_pipeline.py --use-llm
+```
 
 ## Prompt Template
 
@@ -31,14 +49,7 @@ Company data:
 - Employee 6-month Growth: {{employee_growth_6m}}
 - Web Visits: {{web_visits}}
 - Web 6-month Growth: {{web_growth_6m}}
-- Qualification Score: {{total_score}}% ({{qualification_tier}})
-- Score Breakdown: Stage {{stage_score}}% | Sector {{sector_score}}% | Founder {{founder_score}}% | Momentum {{momentum_score}}%
+- Qualification Score: {{total_score}} ({{qualification_tier}})
+- Score Breakdown: Stage {{stage_score}} | Sector {{sector_score}} | Founder {{founder_score}} | Momentum {{momentum_score}}
 
 Return only the rationale paragraph. No bullet points. No headers.
-
-## Editing This Skill
-- To change the output format, edit the instructions above and update
-  scripts/generate_report.py accordingly.
-- To add or remove data fields, edit both the template above and the
-  field mapping in scripts/generate_report.py.
-  

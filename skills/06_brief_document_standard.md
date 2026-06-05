@@ -1,46 +1,41 @@
 # Skill: Brief Document Standard
 
 ## Purpose
-Defines the structure and house style for the weekly sourcing brief — the
-Markdown brief (read in Cursor) and the Word doc (sent to the investment team).
-Both are generated from the same data and follow this standard, so the two
-outputs never drift apart.
+Defines structure and house style for the weekly sourcing brief — Markdown
+(`investor_brief.md`) and Word (`investor_brief.docx`). Both are generated from
+the same ranked rows so outputs stay aligned.
 
-## Document Structure (in order)
+## Config section
+Edit **`config/pipeline_settings.json`** → **`report`**
 
-1. **Header** — title, subtitle, and one line giving the number of qualified
-   companies and the minimum score. (Scoring weights are intentionally NOT
-   shown in the deliverable; they live in the config.)
-
-2. **Portfolio Summary** — a bordered table with three rows: Tiers, Sector
-   concentration, and Stages. Followed by "Top picks" (company names only, no
-   scores). Computed by build_summary() in scripts/generate_report.py so the
-   Markdown and Word versions are identical.
-
-3. **Per-company entries** (kept brief) — heading (rank, name, score, tier),
-   meta line (stage | industry | HQ), clickable website, one rationale
-   paragraph (skill 04), and Action + Diligence (skill 05).
-
-## House Style (single source of truth: config/report_style.json)
-
-- Classic serif typeface (Georgia) for a sophisticated, old-line feel.
-- Restrained monochrome palette: charcoal primary, subtle bronze accent.
-- Plain ASCII punctuation only — no em-dashes, no smart quotes. Any mojibake
-  in the source data (e.g. "â€™") is auto-repaired before output.
-- Confidential footer with page numbers.
-
-| Setting | Controls |
-|---------|----------|
+| Key | What it controls |
+|-----|------------------|
 | `title` / `subtitle` | Document title block |
-| `font` | Typeface for the Word doc |
+| `font` | Typeface for the Word doc (e.g. Georgia) |
+| `body_size_pt` | Body text size in Word |
 | `colors.primary` | Headings and company names |
 | `colors.accent` | Scores, rule lines, links |
 | `colors.muted` / `colors.faint` | Sub-headers and metadata |
-| `footer_text` | Confidential footer text |
+| `footer_text` | Confidential footer in Word |
 | `show_summary_section` | Portfolio Summary on/off |
-| `top_picks_count` / `max_sectors_in_summary` | Summary detail |
+| `top_picks_count` | Names in "Top picks" line |
+| `max_sectors_in_summary` | Sector rows in summary table |
 
-## Editing This Skill
-- Change the LOOK: edit config/report_style.json.
-- Change SECTIONS/order: edit scripts/generate_report.py and scripts/export_word.py.
-- Change summary CONTENT: edit build_summary() in scripts/generate_report.py.
+Scoring knobs for the brief (`top_n_companies`, tiers) live in **`scoring`**.
+
+## Document structure (fixed order)
+1. **Header** — title, subtitle, count line (top N in brief + full CSV note).
+2. **Portfolio Summary** — tiers, sector concentration, stages, top picks.
+3. **Per-company entries** — rank, name, score, tier, meta, website, rationale (skill 04), Action + Diligence (skill 05).
+
+## House style
+- Classic serif (Georgia) in Word; plain ASCII punctuation in all outputs.
+- Mojibake in source data is repaired before output.
+- Confidential footer with page numbers in Word.
+
+## Editing this skill
+- **Look and feel:** edit `report` in `config/pipeline_settings.json`.
+- **How many companies in the brief:** edit `scoring.top_n_companies`.
+- **Rationale content:** edit `rationale` (skill 04) or use `--use-llm`.
+
+Re-run: `python scripts/run_pipeline.py`

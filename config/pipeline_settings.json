@@ -1,0 +1,187 @@
+{
+  "cleaning": {
+    "columns_to_keep": [
+      "Company Name", "Domain", "Description", "Industry", "Tech Vertical",
+      "Sub-industry", "Growth Stage", "Founded Date", "HQ Location",
+      "Operating Status",
+      "Total Funding Amount (in USD)", "Last Funding Amount (in USD)",
+      "Last Funding Date", "Last Funding Type", "Post Money Valuation (in USD)",
+      "Number of Funding Rounds", "Investors", "Lead Investors",
+      "Annual Revenue Estimate (in USD)",
+      "Founders", "Founder Highlights", "Number of Founders",
+      "Employee Count",
+      "Employee Monthly Growth3", "Employee Monthly Growth6",
+      "Web Visits", "Web Visits Monthly Growth3", "Web Visits Monthly Growth6",
+      "Number of Patents", "Awards Count", "Highlights", "Tagline"
+    ],
+    "text_columns": [
+      "Description", "Founder Highlights", "Highlights", "Tagline",
+      "Founders", "Investors", "Lead Investors"
+    ],
+    "funding_columns": [
+      "Total Funding Amount (in USD)", "Last Funding Amount (in USD)",
+      "Post Money Valuation (in USD)", "Annual Revenue Estimate (in USD)"
+    ],
+    "keep_operating_status": "Active",
+    "dedupe_column": "Domain",
+    "stage_mapping": {
+      "Pre-seed / Seed": "Pre-Seed",
+      "Early Stage": "Early Stage",
+      "Growth Stage": "Growth Stage",
+      "Late Stage": "Late Stage"
+    }
+  },
+  "scoring": {
+    "weights": {
+      "stage_fit": 0.25,
+      "sector_alignment": 0.25,
+      "founder_signal": 0.25,
+      "growth_momentum": 0.25
+    },
+    "target_stages": ["Early Stage", "Growth Stage"],
+    "stage_partial_scores": {
+      "Pre-seed / Seed": 0.3,
+      "Pre-Seed": 0.3,
+      "Late Stage": 0.2
+    },
+    "target_sectors": [
+      "Transportation",
+      "Manufacturing",
+      "Automotive",
+      "Aerospace",
+      "Defense",
+      "Logistics",
+      "Robotics",
+      "Physical AI",
+      "Space",
+      "Aviation",
+      "Maritime"
+    ],
+    "sector_match": {
+      "full_if_matches": 3,
+      "full_score": 1.0,
+      "partial_if_matches": 1,
+      "partial_score": 0.6,
+      "no_match_score": 0.0
+    },
+    "sector_text_columns": [
+      "Industry", "Tech Vertical", "Sub-industry", "Description", "Tagline"
+    ],
+    "founder_tag_scores": {
+      "Prior Exit": 0.35,
+      "Prior IPO": 0.35,
+      "Serial Founder": 0.25,
+      "Unicorn Experience": 0.20,
+      "Prior VC-Backed Founder": 0.15,
+      "Fortune 500 Experience": 0.10,
+      "Top University": 0.10,
+      "Strong Technical Background": 0.10,
+      "Strong Academic Background": 0.05,
+      "VC-Backed Founder": 0.05
+    },
+    "founder_normaliser": 1.5,
+    "momentum": {
+      "employee_growth_full_score_pct": 15,
+      "web_growth_full_score_pct": 30,
+      "funding_recent_months": 12,
+      "funding_mid_months": 24,
+      "employee_weight": 0.4,
+      "web_weight": 0.3,
+      "recency_weight": 0.3,
+      "unknown_funding_recency": 0.1
+    },
+    "top_n_companies": 15,
+    "min_score_threshold": 60,
+    "export_all_qualified": true,
+    "score_tiers": [
+      { "label": "Tier 1", "min_score": 92 },
+      { "label": "Tier 2", "min_score": 88 },
+      { "label": "Tier 3", "min_score": 40 }
+    ]
+  },
+  "actions": {
+    "reach_out_threshold": 93,
+    "partner_review_threshold": 88,
+    "outreach_labels": {
+      "tier1": "Reach out now (Tier 1)",
+      "tier2": "Schedule partner review (Tier 2)",
+      "tier3": "Monitor (Tier 3)"
+    },
+    "timing_unknown_message": "Funding date unknown — confirm last round before engaging.",
+    "timing_bands": [
+      {
+        "max_months": 9,
+        "message": "Raised ~{months}mo ago — build the relationship now, ahead of the next round."
+      },
+      {
+        "max_months": 20,
+        "message": "~{months}mo since last raise — likely approaching a new round; strong time to engage."
+      },
+      {
+        "max_months": null,
+        "message": "~{months}mo since last raise — may be raising soon or capital-efficient; worth a direct conversation."
+      }
+    ],
+    "diligence_rules": [
+      {
+        "always": true,
+        "step": "Validate founder track record and prior exit outcomes."
+      },
+      {
+        "field": "sector_score",
+        "op": "lt",
+        "value": 100,
+        "step": "Confirm core technology and fit with target sectors."
+      },
+      {
+        "field": "momentum_score",
+        "op": "lt",
+        "value": 70,
+        "step": "Investigate soft growth signals (headcount / web traffic)."
+      },
+      {
+        "field": "months_since_funding",
+        "op": "gt",
+        "value": 20,
+        "step": "Confirm current runway, burn rate, and timeline to next raise."
+      },
+      {
+        "field": "web_visits",
+        "op": "missing",
+        "step": "Pull fresh traction data — web/product usage is sparse in this export."
+      }
+    ],
+    "diligence_closers": [
+      "Assess market size and competitive landscape.",
+      "Review cap table and quality of existing investors."
+    ],
+    "max_diligence_steps": 5
+  },
+  "rationale": {
+    "max_description_chars": 220,
+    "founder_tags_to_highlight": [
+      "Prior Exit", "Prior IPO", "Serial Founder",
+      "Unicorn Experience", "Top University"
+    ],
+    "include_score_breakdown": true,
+    "include_funding_section": true,
+    "include_growth_signals": true,
+    "include_founder_tags": true
+  },
+  "report": {
+    "title": "The Friedkin Group",
+    "subtitle": "Weekly Sourcing Brief",
+    "font": "Georgia",
+    "body_size_pt": 11,
+    "colors": {
+      "primary": "1A1A1A",
+      "accent": "8A7357",
+      "muted": "595959",
+      "faint": "8C8C8C"
+    },
+    "footer_text": "The Friedkin Group  |  Confidential",
+    "show_summary_section": true,
+    "top_picks_count": 3,
+    "max_sectors_in_summary": 5
+  }
+}
