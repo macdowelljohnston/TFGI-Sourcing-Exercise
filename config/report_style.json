@@ -1,0 +1,16 @@
+{
+  "title": "The Friedkin Group",
+  "subtitle": "Weekly Sourcing Brief",
+  "font": "Georgia",
+  "body_size_pt": 11,
+  "colors": {
+    "primary": "1A1A1A",
+    "accent": "8A7357",
+    "muted": "595959",
+    "faint": "8C8C8C"
+  },
+  "footer_text": "The Friedkin Group  |  Confidential",
+  "show_summary_section": true,
+  "top_picks_count": 3,
+  "max_sectors_in_summary": 5
+}

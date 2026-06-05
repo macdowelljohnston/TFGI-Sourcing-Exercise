@@ -13,8 +13,9 @@ Each run is saved to its own folder:  output/<filename>_<date>/
   - scored_companies.csv  (full data)
   - investor_brief.docx   (Word doc, also copied to your Desktop)
 
+After a successful run, the processed input file is moved into
+data/input/archive/ so the drop-zone stays clean for next week.
 Re-running the same file on the same day overwrites that run's folder.
-A new file or a new day creates a new folder, so old reports are kept.
 """
 
 import argparse
@@ -50,6 +51,23 @@ def _find_desktop():
         if os.path.isdir(cand):
             return cand
     return None
+
+
+def _archive_input(input_path, run_name):
+    """Move a processed input file into data/input/archive/ (after success).
+    Only archives files that live inside data/input/ -- never external paths."""
+    input_dir = os.path.join("data", "input")
+    abs_input = os.path.abspath(input_path)
+    abs_indir = os.path.abspath(input_dir)
+    if not abs_input.startswith(abs_indir):
+        return None  # external file (e.g. --input from Desktop); leave it alone
+    archive_dir = os.path.join(input_dir, "archive")
+    os.makedirs(archive_dir, exist_ok=True)
+    base = os.path.basename(input_path)
+    stem, ext = os.path.splitext(base)
+    dest = os.path.join(archive_dir, f"{stem}_{datetime.date.today().isoformat()}{ext}")
+    shutil.move(input_path, dest)
+    return dest
 
 
 def main():
@@ -89,7 +107,11 @@ def main():
             shutil.copyfile(docx_path, dest)
             print(f"  Copied Word doc to Desktop: {dest}")
         else:
-            print("  (Desktop not found — Word doc saved in the run folder only.)")
+            print("  (Desktop not found - Word doc saved in the run folder only.)")
+
+    archived = _archive_input(input_path, run_name)
+    if archived:
+        print(f"  Archived input -> {archived}")
 
     print(f"\nRun saved to: {out_dir}")
     print("Top 5:")

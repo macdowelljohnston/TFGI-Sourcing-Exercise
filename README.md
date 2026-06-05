@@ -117,6 +117,7 @@ After editing, just re-run `python scripts/run_pipeline.py`. No code changes nee
   deterministic, auditable, and identical every run. A spreadsheet would be
   fragile across a 200-column weekly export; a pure-LLM approach would be
   non-reproducible and slow over 150 rows.
+  - **Cursor (or VSCode)** plus Agent aid. Allows non-technical user to articulate goals to the agent build.
 - **A JSON config file** for all tunable values — so a non-technical user can
   change the model without reading code, which is exactly the "edit and re-run"
   requirement.

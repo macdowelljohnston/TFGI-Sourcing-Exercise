@@ -227,3 +227,5 @@ data/output/*.csv
 !data/input/.gitkeep
 !data/output/.gitkeep
 !output/
+# Archived Specter inputs (proprietary - keep local, never commit)
+data/input/archive/
