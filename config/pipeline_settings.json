@@ -33,10 +33,10 @@
   },
   "scoring": {
     "weights": {
-      "stage_fit": 0.25,
-      "sector_alignment": 0.25,
-      "founder_signal": 0.25,
-      "growth_momentum": 0.25
+      "stage_fit": 0.15,
+      "sector_alignment": 0.15,
+      "founder_signal": 0.40,
+      "growth_momentum": 0.30
     },
     "target_stages": ["Early Stage", "Growth Stage"],
     "stage_partial_scores": {
@@ -91,17 +91,17 @@
       "unknown_funding_recency": 0.1
     },
     "top_n_companies": 15,
-    "min_score_threshold": 60,
+    "min_score_threshold": 75,
     "export_all_qualified": true,
     "score_tiers": [
-      { "label": "Tier 1", "min_score": 92 },
-      { "label": "Tier 2", "min_score": 88 },
-      { "label": "Tier 3", "min_score": 40 }
+      { "label": "Tier 1", "min_score": 80 },
+      { "label": "Tier 2", "min_score": 70 },
+      { "label": "Tier 3", "min_score": 60 }
     ]
   },
   "actions": {
-    "reach_out_threshold": 93,
-    "partner_review_threshold": 88,
+    "reach_out_threshold": 85,
+    "partner_review_threshold": 80,
     "outreach_labels": {
       "tier1": "Reach out now (Tier 1)",
       "tier2": "Schedule partner review (Tier 2)",

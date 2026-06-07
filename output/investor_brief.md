@@ -1,4 +1,4 @@
-# Friedkin — Weekly Sourcing Brief
+pip install python-docx# Friedkin — Weekly Sourcing Brief
 
 Generated from the latest Specter export. Showing the top 15 qualified companies (min score 40).
 
