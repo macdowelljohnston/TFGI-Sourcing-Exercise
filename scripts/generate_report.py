@@ -6,7 +6,9 @@ See skills/04_screening_summary.md and skills/06_brief_document_standard.md.
 Tunable values: pipeline_settings.json -> rationale, report, scoring.
 """
 
+import datetime
 import os
+import re
 import pandas as pd
 
 from load_settings import get_section, scoring_config
@@ -188,7 +190,31 @@ def _llm_rationale(row, scoring_cfg):
     return clean_text(msg.content[0].text.strip())
 
 
-def generate_report(ranked_full, settings, output_dir="output", use_llm=False):
+def _run_folder_name(input_path):
+    stem = os.path.basename(input_path)
+    for ext in (".xlsx", ".csv", ".xlsm"):
+        if stem.lower().endswith(ext):
+            stem = stem[:-len(ext)]
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("_")
+    return f"{stem}_{datetime.date.today().isoformat()}"
+
+
+def _validate_output_dir(output_dir):
+    """All pipeline artifacts must live under output/<run_folder>/, not output/."""
+    norm = os.path.normpath(output_dir)
+    if norm in ("output", "."):
+        raise ValueError(
+            "output_dir must be a run subfolder (output/<run_folder>/), not output/"
+        )
+    parent, leaf = os.path.split(norm)
+    if os.path.normpath(parent) != "output" or not leaf:
+        raise ValueError(
+            f"output_dir must be output/<run_folder>/ (got {output_dir!r})"
+        )
+
+
+def generate_report(ranked_full, settings, output_dir, use_llm=False):
+    _validate_output_dir(output_dir)
     os.makedirs(output_dir, exist_ok=True)
     scoring_cfg = scoring_config(settings)
     style = get_section(settings, "report")
@@ -272,12 +298,16 @@ def generate_report(ranked_full, settings, output_dir="output", use_llm=False):
 
 
 if __name__ == "__main__":
-    from clean_data import load_and_clean
+    from clean_data import find_input_file, load_and_clean
     from score_companies import score_dataframe
     from recommend_actions import add_recommendations
     from load_settings import load_settings
 
     settings = load_settings()
+    input_path = find_input_file()
+    out_dir = os.path.join("output", _run_folder_name(input_path))
     ranked = add_recommendations(
-        score_dataframe(load_and_clean(settings=settings), settings), settings)
-    generate_report(ranked, settings)
+        score_dataframe(load_and_clean(input_path=input_path, settings=settings), settings),
+        settings,
+    )
+    generate_report(ranked, settings, output_dir=out_dir)

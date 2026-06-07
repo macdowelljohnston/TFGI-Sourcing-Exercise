@@ -71,6 +71,8 @@ def main():
     input_path = args.input or find_input_file()
     run_name = _run_folder_name(input_path)
     out_dir = os.path.join("output", run_name)
+    if os.path.normpath(out_dir) == "output":
+        raise ValueError("Run output must be output/<run_folder>/, not output/")
 
     print("Step 1/4  Cleaning data...")
     cleaned = load_and_clean(input_path=input_path, settings=settings)
