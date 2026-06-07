@@ -86,7 +86,7 @@ Every company gets four sub-scores (0–100), combined using `scoring.weights`:
 total_score = round(100 x (stage*w1 + sector*w2 + founder*w3 + momentum*w4))
 ```
 
-Tier labels come from `scoring.score_tiers` (default: Tier 1 at 92+, Tier 2 at 88+, Tier 3 at 60+). Companies below `min_score_threshold` (default 60) are excluded.
+Tier labels come from `scoring.score_tiers` (default: Tier 1 at 80+, Tier 2 at 70+, Tier 3 at 60+). Companies below `min_score_threshold` (default 75) are excluded.
 
 ---
 
@@ -130,7 +130,7 @@ Keep your Specter file in `data/input/` and re-run after each config edit.
 | **Filter** | `scoring.min_score_threshold` (e.g. `60` → `75`) or `scoring.target_stages` | Fewer/more qualified companies | Terminal: `N companies passed the threshold` |
 | Outreach tiers (bonus) | `actions.reach_out_threshold` | Tier 1 vs Tier 2 action lines | `Action:` lines in the brief |
 
-**Suggested live tweak:** set `founder_signal` to `0.35` and `growth_momentum` to `0.15`, re-run, show Top 5 in the terminal and `output/<run>/investor_brief.md`.
+**Suggested live tweak:** set `founder_signal` to `0.40` and `growth_momentum` to `0.30` (and `stage_fit`/`sector_alignment` to `0.15` each — weights must sum to 1.0), re-run, show Top 5 in the terminal and `output/<run>/investor_brief.md`.
 
 Add `--no-word` to skip the Word document during a quick demo. If `data/input/` is empty, drop a Specter export there, or pass `--input path/to/file.xlsx`.
 

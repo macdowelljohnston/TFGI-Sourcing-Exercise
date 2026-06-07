@@ -30,7 +30,10 @@ def validate_settings(settings):
     if weights:
         total = sum(weights.values())
         if abs(total - 1.0) > 0.01:
-            print(f"  Warning: scoring weights sum to {total:.2f}, expected 1.0")
+            raise ValueError(
+                f"scoring.weights sum to {total:.4f} — they must sum to 1.0. "
+                f"Current values: {weights}"
+            )
 
     tiers = scoring.get("score_tiers", [])
     mins = [t.get("min_score", 0) for t in tiers]

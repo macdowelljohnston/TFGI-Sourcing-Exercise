@@ -23,8 +23,8 @@ Edit **`config/pipeline_settings.json`** → **`actions`**
 ## Outreach tiers (defaults)
 | Condition | Label |
 |-----------|--------|
-| `total_score >= 92` | Reach out now (Tier 1) |
-| `total_score >= 88` | Schedule partner review (Tier 2) |
+| `total_score >= 85` | Reach out now (Tier 1) |
+| `total_score >= 80` | Schedule partner review (Tier 2) |
 | otherwise | Monitor (Tier 3) |
 
 Align thresholds with `scoring.score_tiers` for consistency.
