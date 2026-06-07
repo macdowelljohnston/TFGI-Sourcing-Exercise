@@ -26,21 +26,25 @@ def _sector_alignment(row, config):
     text = " ".join(str(row.get(c, "")) for c in cols).lower()
     matches = sum(1 for kw in config["target_sectors"] if kw.lower() in text)
     sm = config.get("sector_match", {})
-    if matches >= sm.get("full_if_matches", 2):
-        return sm.get("full_score", 1.0)
-    if matches >= sm.get("partial_if_matches", 1):
-        return sm.get("partial_score", 0.6)
-    return sm.get("no_match_score", 0.0)
+    full_thresh = sm.get("keywords_for_full_score", sm.get("full_if_matches", 2))
+    partial_thresh = sm.get("keywords_for_partial_score", sm.get("partial_if_matches", 1))
+    if matches >= full_thresh:
+        return 1.0
+    if matches >= partial_thresh:
+        pct = sm.get("partial_score_pct")
+        return (pct / 100) if pct is not None else sm.get("partial_score", 0.6)
+    return 0.0
 
 
 def _founder_signal(highlights, config):
     tag_scores = config["founder_tag_scores"]
-    normaliser = config.get("founder_normaliser", 1.5)
+    max_score = config.get("founder_tags_for_max_score",
+                           config.get("founder_normaliser", 1.5))
     if not highlights:
         return 0.0
     tags = [t.strip() for t in str(highlights).split(",")]
     score = sum(tag_scores.get(t, 0.0) for t in tags)
-    return min(score / normaliser, 1.0)
+    return min(score / max_score, 1.0)
 
 
 def _clamp01(x):
@@ -50,25 +54,34 @@ def _clamp01(x):
 def _growth_momentum(row, m):
     emp = pd.to_numeric(row.get("Employee Monthly Growth6"), errors="coerce")
     emp = 0.0 if pd.isna(emp) else emp
-    emp_score = _clamp01(emp / m["employee_growth_full_score_pct"])
+    emp_full = m.get("headcount_growth_pct_for_full_score",
+                     m.get("employee_growth_full_score_pct", 15))
+    emp_score = _clamp01(emp / emp_full)
 
     web = pd.to_numeric(row.get("Web Visits Monthly Growth6"), errors="coerce")
     web = 0.0 if pd.isna(web) else web
-    web_score = _clamp01(web / m["web_growth_full_score_pct"])
+    web_full = m.get("web_growth_pct_for_full_score",
+                     m.get("web_growth_full_score_pct", 30))
+    web_score = _clamp01(web / web_full)
 
     lfd = row.get("Last Funding Date")
     if pd.isna(lfd):
-        recency = m.get("unknown_funding_recency", 0.1)
+        recency = m.get("score_if_funding_date_unknown",
+                        m.get("unknown_funding_recency", 0.1))
     else:
         months = (pd.Timestamp.now() - pd.Timestamp(lfd)).days / 30.0
-        if months <= m["funding_recent_months"]:
+        recent = m.get("recent_funding_window_months",
+                       m.get("funding_recent_months", 12))
+        mid = m.get("mid_funding_window_months",
+                    m.get("funding_mid_months", 24))
+        if months <= recent:
             recency = 1.0
-        elif months <= m["funding_mid_months"]:
+        elif months <= mid:
             recency = 0.6
         else:
             recency = 0.2
 
-    ew = m.get("employee_weight", 0.4)
+    ew = m.get("headcount_weight", m.get("employee_weight", 0.4))
     ww = m.get("web_weight", 0.3)
     rw = m.get("recency_weight", 0.3)
     return ew * emp_score + ww * web_score + rw * recency

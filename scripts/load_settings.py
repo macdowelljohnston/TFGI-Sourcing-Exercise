@@ -35,6 +35,17 @@ def validate_settings(settings):
                 f"Current values: {weights}"
             )
 
+    momentum = scoring.get("momentum", {})
+    m_weight_keys = ("headcount_weight", "web_weight", "recency_weight")
+    m_weights = {k: momentum[k] for k in m_weight_keys if k in momentum}
+    if len(m_weights) == 3:
+        m_total = sum(m_weights.values())
+        if abs(m_total - 1.0) > 0.01:
+            raise ValueError(
+                f"momentum weights sum to {m_total:.4f} — they must sum to 1.0. "
+                f"Current values: {m_weights}"
+            )
+
     tiers = scoring.get("score_tiers", [])
     mins = [t.get("min_score", 0) for t in tiers]
     if mins != sorted(mins, reverse=True):

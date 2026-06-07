@@ -11,7 +11,7 @@ Built to be **re-run every week** when a fresh export drops in — and to be
 
 ```powershell
 # 1. Install dependencies (once)
-pip install pandas openpyxl python-docx
+pip install -r requirements.txt
 
 # 2. Drop the latest Specter export into data/input/
 
@@ -73,7 +73,7 @@ See [skills/README.md](skills/README.md) and [config/README.md](config/README.md
 
 ## The scoring model
 
-Every company gets four sub-scores (0–100), combined using `scoring.weights`:
+Every company gets four sub-scores (0-100), combined using `scoring.weights`:
 
 | Dimension | What it measures |
 |-----------|------------------|
@@ -86,7 +86,7 @@ Every company gets four sub-scores (0–100), combined using `scoring.weights`:
 total_score = round(100 x (stage*w1 + sector*w2 + founder*w3 + momentum*w4))
 ```
 
-Tier labels come from `scoring.score_tiers` (default: Tier 1 at 80+, Tier 2 at 70+, Tier 3 at 60+). Companies below `min_score_threshold` (default 75) are excluded.
+Tier labels come from `scoring.score_tiers` (default: Tier 1 at 90+, Tier 2 at 75+, Tier 3 at 60+). Companies below `min_score_threshold` (default 75) are excluded.
 
 ---
 
@@ -97,7 +97,7 @@ Tier labels come from `scoring.score_tiers` (default: Tier 1 at 80+, Tier 2 at 7
 | To do this... | Edit this section |
 |---------------|-------------------|
 | Change columns or filters | `cleaning` |
-| Re-weight dimensions | `scoring.weights` (sum to 1.0) |
+| Re-weight dimensions | `scoring.weights` (must sum to 1.0) |
 | Add/remove sectors or stages | `scoring.target_sectors`, `target_stages` |
 | Change founder tag points | `scoring.founder_tag_scores` |
 | Change shortlist length | `scoring.top_n_companies` |
@@ -113,6 +113,8 @@ After editing, re-run:
 python scripts/run_pipeline.py
 ```
 
+For a plain-English explanation of every config setting — including the less obvious ones — see [config/README.md](config/README.md).
+
 ### Live demo (walkthrough script)
 
 Everything the interviewer may ask you to change lives in **`config/pipeline_settings.json`**. Re-run with:
@@ -123,14 +125,14 @@ python scripts/run_pipeline.py
 
 Keep your Specter file in `data/input/` and re-run after each config edit.
 
-| They ask to change… | Config path | Effect | What to show after re-run |
-|---------------------|-------------|--------|---------------------------|
+| They ask to change... | Config path | Effect | What to show after re-run |
+|-----------------------|-------------|--------|---------------------------|
 | **Scoring weight** | `scoring.weights` (must sum to 1.0) | Re-orders top 15 in the brief | Terminal Top 5 + `output/<run>/investor_brief.md` |
-| **Sector** | `scoring.target_sectors` | Changes `sector_score` and sector summary | `scored_companies.csv` sorted by `sector_score` |
-| **Filter** | `scoring.min_score_threshold` (e.g. `60` → `75`) or `scoring.target_stages` | Fewer/more qualified companies | Terminal: `N companies passed the threshold` |
+| **Sector** | `scoring.target_sectors` | Changes sector score and sector summary | `scored_companies.csv` sorted by `sector_score` |
+| **Filter** | `scoring.min_score_threshold` (e.g. raise from `75` to `80`) or `scoring.target_stages` | Fewer/more qualified companies | Terminal: `N companies passed the threshold` |
 | Outreach tiers (bonus) | `actions.reach_out_threshold` | Tier 1 vs Tier 2 action lines | `Action:` lines in the brief |
 
-**Suggested live tweak:** set `founder_signal` to `0.40` and `growth_momentum` to `0.30` (and `stage_fit`/`sector_alignment` to `0.15` each — weights must sum to 1.0), re-run, show Top 5 in the terminal and `output/<run>/investor_brief.md`.
+**Suggested live tweak:** in `scoring.weights`, change `founder_signal` from `0.40` to `0.20` and `growth_momentum` from `0.30` to `0.50` (keep `stage_fit` and `sector_alignment` at `0.15` each — weights still sum to 1.0). This shifts emphasis from founder pedigree to growth signals, visibly reordering the Top 5 — companies like Filics (+100% headcount, +457% web) move up; companies that scored purely on founder tags drop. Re-run and show the new Top 5 in the terminal and `output/<run>/investor_brief.md`.
 
 Add `--no-word` to skip the Word document during a quick demo. If `data/input/` is empty, drop a Specter export there, or pass `--input path/to/file.xlsx`.
 
@@ -174,7 +176,7 @@ model still applies correctly on a broader export.
 TFGI-Sourcing-Exercise/
 ├── config/
 │   ├── pipeline_settings.json   # all tunable knobs
-│   └── README.md
+│   └── README.md                # plain-English config reference
 ├── skills/                      # one module per pipeline step
 │   ├── 01_data_cleaning.md
 │   ├── 02_qualification_scoring.md

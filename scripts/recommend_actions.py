@@ -63,13 +63,13 @@ def _eval_rule(rule, ctx):
         return actual is None
     if actual is None:
         return False
-    if op == "lt":
+    if op in ("less_than", "lt"):
         return actual < value
-    if op == "gt":
+    if op in ("greater_than", "gt"):
         return actual > value
-    if op == "lte":
+    if op in ("less_than_or_equal", "lte"):
         return actual <= value
-    if op == "gte":
+    if op in ("greater_than_or_equal", "gte"):
         return actual >= value
     if op == "eq":
         return actual == value

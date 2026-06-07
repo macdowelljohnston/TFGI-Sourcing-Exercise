@@ -58,11 +58,9 @@
       "Maritime"
     ],
     "sector_match": {
-      "full_if_matches": 3,
-      "full_score": 1.0,
-      "partial_if_matches": 1,
-      "partial_score": 0.6,
-      "no_match_score": 0.0
+      "keywords_for_full_score": 3,
+      "keywords_for_partial_score": 1,
+      "partial_score_pct": 60
     },
     "sector_text_columns": [
       "Industry", "Tech Vertical", "Sub-industry", "Description", "Tagline"
@@ -79,28 +77,28 @@
       "Strong Academic Background": 0.05,
       "VC-Backed Founder": 0.05
     },
-    "founder_normaliser": 1.5,
+    "founder_tags_for_max_score": 1.5,
     "momentum": {
-      "employee_growth_full_score_pct": 15,
-      "web_growth_full_score_pct": 30,
-      "funding_recent_months": 12,
-      "funding_mid_months": 24,
-      "employee_weight": 0.4,
+      "headcount_growth_pct_for_full_score": 15,
+      "web_growth_pct_for_full_score": 30,
+      "recent_funding_window_months": 12,
+      "mid_funding_window_months": 24,
+      "score_if_funding_date_unknown": 0.1,
+      "headcount_weight": 0.4,
       "web_weight": 0.3,
-      "recency_weight": 0.3,
-      "unknown_funding_recency": 0.1
+      "recency_weight": 0.3
     },
     "top_n_companies": 15,
     "min_score_threshold": 75,
     "export_all_qualified": true,
     "score_tiers": [
-      { "label": "Tier 1", "min_score": 80 },
-      { "label": "Tier 2", "min_score": 70 },
+      { "label": "Tier 1", "min_score": 90 },
+      { "label": "Tier 2", "min_score": 75 },
       { "label": "Tier 3", "min_score": 60 }
     ]
   },
   "actions": {
-    "reach_out_threshold": 85,
+    "reach_out_threshold": 90,
     "partner_review_threshold": 80,
     "outreach_labels": {
       "tier1": "Reach out now (Tier 1)",
@@ -129,19 +127,19 @@
       },
       {
         "field": "sector_score",
-        "op": "lt",
+        "op": "less_than",
         "value": 100,
         "step": "Confirm core technology and fit with target sectors."
       },
       {
         "field": "momentum_score",
-        "op": "lt",
+        "op": "less_than",
         "value": 70,
         "step": "Investigate soft growth signals (headcount / web traffic)."
       },
       {
         "field": "months_since_funding",
-        "op": "gt",
+        "op": "greater_than",
         "value": 20,
         "step": "Confirm current runway, burn rate, and timeline to next raise."
       },
