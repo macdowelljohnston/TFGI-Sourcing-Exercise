@@ -3,7 +3,11 @@
 ## Purpose
 Produce a concise, investor-ready rationale for each company in the weekly brief.
 
-**Default:** deterministic template driven by `pipeline_settings.json` → `rationale`.  
+**Default:** deterministic template driven by `pipeline_settings.json` → `rationale`.
+It renders as flowing prose — a lead sentence (truncated on a sentence or word
+boundary, never mid-word), followed by funding, six-month growth signals,
+founder credentials, and the qualification score — with each part toggled by the
+config flags below.
 **Optional:** Claude-written rationales via `--use-llm` using the prompt below.
 
 ## Config section (default mode)

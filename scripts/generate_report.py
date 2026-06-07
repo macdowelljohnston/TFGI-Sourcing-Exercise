@@ -102,18 +102,53 @@ def build_summary(ranked, scoring_cfg, style):
     }
 
 
+def _oxford(items):
+    """Join a list into a natural-language phrase with an Oxford comma."""
+    items = [i for i in items if i]
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return ", ".join(items[:-1]) + f", and {items[-1]}"
+
+
+def _truncate_prose(text, max_chars):
+    """Trim to <= max_chars without cutting mid-word.
+
+    Prefers the last full sentence inside the window; otherwise falls back to the
+    last word boundary. Never leaves a dangling ellipsis or a half word.
+    """
+    text = text.strip()
+    if len(text) <= max_chars:
+        return text
+    window = text[:max_chars]
+    end = max(window.rfind(". "), window.rfind("! "), window.rfind("? "))
+    if end >= max_chars * 0.5:
+        return text[: end + 1].strip()
+    space = window.rfind(" ")
+    trimmed = (window[:space] if space > 0 else window).rstrip(" ,;:-")
+    return trimmed
+
+
 def _template_rationale(row, rationale_cfg):
-    """Deterministic rationale driven by pipeline_settings.json -> rationale."""
+    """Deterministic, investor-ready rationale driven by pipeline_settings.json -> rationale."""
     name = clean_text(row.get("Company Name", "This company"))
     max_chars = rationale_cfg.get("max_description_chars", 220)
     desc = clean_text(row.get("Description") or row.get("Tagline") or "").strip()
-    if desc.lower().startswith(name.lower()):
-        desc = desc[len(name):].lstrip(" -:,").strip()
-        desc = desc[0].upper() + desc[1:] if desc else desc
-    if len(desc) > max_chars:
-        desc = desc[: max_chars - 3].rstrip() + "..."
+    desc = _truncate_prose(desc, max_chars) if desc else ""
 
-    parts = [f"{name}. {desc}" if desc else f"{name}."]
+    if desc:
+        if desc.lower().startswith(name.lower()):
+            lead = desc
+        else:
+            lead = f"{name}: {desc[0].upper()}{desc[1:]}"
+        if not lead.endswith((".", "!", "?")):
+            lead += "."
+    else:
+        lead = f"{name}."
+    parts = [lead]
 
     if rationale_cfg.get("include_funding_section", True):
         total_funding = _fmt_usd(row.get("Total Funding Amount (in USD)"))
@@ -121,25 +156,33 @@ def _template_rationale(row, rationale_cfg):
         last_date = _fmt_date(row.get("Last Funding Date"))
         fund_bits = []
         if total_funding != "n/a":
-            fund_bits.append(f"has raised {total_funding} to date")
+            fund_bits.append(f"backed by {total_funding} raised to date")
         if last_type:
-            fund_bits.append(f"most recently a {last_type} round ({last_date})")
+            if last_date != "unknown":
+                fund_bits.append(f"most recently a {last_type} round in {last_date}")
+            else:
+                fund_bits.append(f"most recently a {last_type} round")
         if fund_bits:
-            parts.append("It " + ", ".join(fund_bits) + ".")
+            sentence = ", ".join(fund_bits)
+            parts.append(sentence[0].upper() + sentence[1:] + ".")
 
     if rationale_cfg.get("include_growth_signals", True):
         emp = row.get("Employee Count", "")
         emp_g = row.get("Employee Monthly Growth6")
         web_g = row.get("Web Visits Monthly Growth6")
+        has_emp = emp not in ("", None) and not pd.isna(emp)
         growth_bits = []
         if pd.notna(emp_g):
-            growth_bits.append(f"{emp_g:+.0f}% headcount growth (6mo)")
+            growth_bits.append(f"{emp_g:+.0f}% headcount")
         if pd.notna(web_g):
-            growth_bits.append(f"{web_g:+.0f}% web traffic growth (6mo)")
-        if emp not in ("", None) and not pd.isna(emp):
-            growth_bits.append(f"~{int(emp)} employees")
+            growth_bits.append(f"{web_g:+.0f}% web traffic")
         if growth_bits:
-            parts.append("Signals: " + ", ".join(growth_bits) + ".")
+            sentence = "Over the past six months, " + _oxford(growth_bits) + " growth"
+            if has_emp:
+                sentence += f", on a base of ~{int(emp)} employees"
+            parts.append(sentence + ".")
+        elif has_emp:
+            parts.append(f"Currently ~{int(emp)} employees.")
 
     if rationale_cfg.get("include_founder_tags", True):
         tags = clean_text(row.get("Founder Highlights", ""))
@@ -147,12 +190,14 @@ def _template_rationale(row, rationale_cfg):
         if tags and highlight:
             key_tags = [t.strip() for t in tags.split(",") if t.strip() in highlight]
             if key_tags:
-                parts.append("Founder signal: " + ", ".join(key_tags) + ".")
+                parts.append("Founder credentials include " + _oxford(key_tags) + ".")
 
     if rationale_cfg.get("include_score_breakdown", True):
         parts.append(
-            f"Scores: Stage {int(row['stage_score'])}, Sector {int(row['sector_score'])}, "
-            f"Founder {int(row['founder_score'])}, Momentum {int(row['momentum_score'])}.")
+            f"Qualification score {int(row['total_score'])}/100 "
+            f"(Stage {int(row['stage_score'])}, Sector {int(row['sector_score'])}, "
+            f"Founder {int(row['founder_score'])}, Momentum {int(row['momentum_score'])})."
+        )
     return " ".join(parts)
 
 

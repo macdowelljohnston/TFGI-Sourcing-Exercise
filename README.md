@@ -1,9 +1,8 @@
-# TFGI Sourcing Exercise — Specter Screening Pipeline
+# TFGI Sourcing Pipeline — Specter Company Screening
 
-A repeatable workflow that ingests a weekly Specter CSV export, qualifies and ranks each company against The Friedkin Group's investment criteria, and produces an investor-ready shortlist with a rationale for each name.
+A repeatable weekly process that ingests a Specter export, qualifies and ranks each company against The Friedkin Group's investment criteria, and produces an investor-ready shortlist with a rationale for each name.
 
-Built to be **re-run every week** when a fresh export drops in — and to be
-**edited by a non-technical team member** without touching any code.
+The pipeline is **deterministic and reproducible**: the same export always yields the same brief, and a new export reproduces a full run end to end. It is designed to be **run every week** when a fresh export arrives, and to be **tuned by a non-technical team member** entirely through one configuration file — no code changes required.
 
 ---
 
@@ -23,6 +22,25 @@ Results appear in `output/<filename>_<date>/`:
 - `scored_companies.csv` — all companies above the score threshold
 - `investor_brief.md` — top N ranked names with rationale and actions
 - `investor_brief.docx` — Word version (also copied to Desktop when found)
+
+---
+
+## The weekly process
+
+The pipeline is built to run on a new Specter export each week. Every run is
+self-contained and reproducible.
+
+1. **Add the export.** Drop the new Specter file into `data/input/`. The newest
+   file is selected automatically, or pass one explicitly with
+   `--input path/to/file.xlsx`.
+2. **Run the pipeline.** `python scripts/run_pipeline.py`.
+3. **Review the brief.** Open `output/<latest_run>/investor_brief.md` (or the
+   `.docx`).
+
+Each run writes to its own dated folder under `output/`, so prior weeks are
+preserved and runs never overwrite each other. Input files remain in
+`data/input/` after a run; move older exports to `data/input/archive/` only if
+you want to keep that folder tidy.
 
 ---
 
@@ -115,39 +133,66 @@ python scripts/run_pipeline.py
 
 For a plain-English explanation of every config setting — including the less obvious ones — see [config/README.md](config/README.md).
 
-### Live demo (walkthrough script)
+### Live walkthrough
 
-Everything the interviewer may ask you to change lives in **`config/pipeline_settings.json`**. Re-run with:
+Every business rule lives in **`config/pipeline_settings.json`**. To see a change
+take effect, edit the config and re-run:
 
 ```powershell
 python scripts/run_pipeline.py
 ```
 
-Keep your Specter file in `data/input/` and re-run after each config edit.
+Keep the current Specter file in `data/input/` and re-run after each config edit.
+The table below maps common adjustments to where they live and what to verify
+afterward — useful for a live walkthrough or for validating a tuning change.
 
-| They ask to change... | Config path | Effect | What to show after re-run |
-|-----------------------|-------------|--------|---------------------------|
+| To change... | Config path | Effect | Where to verify after re-run |
+|--------------|-------------|--------|------------------------------|
 | **Scoring weight** | `scoring.weights` (must sum to 1.0) | Re-orders top 15 in the brief | Terminal Top 5 + `output/<run>/investor_brief.md` |
 | **Sector** | `scoring.target_sectors` | Changes sector score and sector summary | `scored_companies.csv` sorted by `sector_score` |
 | **Filter** | `scoring.min_score_threshold` (e.g. raise from `75` to `80`) or `scoring.target_stages` | Fewer/more qualified companies | Terminal: `N companies passed the threshold` |
 | Outreach tiers (bonus) | `actions.reach_out_threshold` | Tier 1 vs Tier 2 action lines | `Action:` lines in the brief |
 
-**Suggested live tweak:** in `scoring.weights`, change `founder_signal` from `0.40` to `0.20` and `growth_momentum` from `0.30` to `0.50` (keep `stage_fit` and `sector_alignment` at `0.15` each — weights still sum to 1.0). This shifts emphasis from founder pedigree to growth signals, visibly reordering the Top 5 — companies like Filics (+100% headcount, +457% web) move up; companies that scored purely on founder tags drop. Re-run and show the new Top 5 in the terminal and `output/<run>/investor_brief.md`.
+**Example adjustment:** in `scoring.weights`, change `founder_signal` from `0.40` to `0.20` and `growth_momentum` from `0.30` to `0.50` (keep `stage_fit` and `sector_alignment` at `0.15` each — weights still sum to 1.0). This shifts emphasis from founder pedigree to growth signals and visibly reorders the Top 5: companies like Filics (+100% headcount, +457% web) move up, while companies that scored mainly on founder tags drop. Re-run and compare the Top 5 in the terminal and `output/<run>/investor_brief.md`.
 
-Add `--no-word` to skip the Word document during a quick demo. If `data/input/` is empty, drop a Specter export there, or pass `--input path/to/file.xlsx`.
+Add `--no-word` to skip the Word document for a faster run. If `data/input/` is empty, drop a Specter export there, or pass `--input path/to/file.xlsx`.
 
-### Optional LLM rationales
+---
+
+## API integrations
+
+The pipeline runs fully offline by default — scoring, founder tags, rationales,
+and actions are all deterministic and require no external services. API keys are
+**optional enhancements**, configured through a local `.env` file.
+
+To set keys up, copy the template and fill in the values you have:
+
+```powershell
+copy .env.example .env
+```
+
+`.env` is gitignored and never committed. `.env.example` lists every key the
+pipeline can use.
+
+### Available today
+
+- **`ANTHROPIC_API_KEY`** — enables LLM-written rationales in place of the
+  deterministic template:
+
 ```powershell
 python scripts/run_pipeline.py --use-llm
 ```
-Requires `ANTHROPIC_API_KEY`. Uses the prompt in `skills/04_screening_summary.md`.
 
-### Running on a new week's export
-1. Drop the new Specter file into `data/input/` (newest file is picked automatically).
-2. Run `python scripts/run_pipeline.py`.
-3. Open `output/<latest_run>/investor_brief.md`.
+  Uses the prompt in `skills/04_screening_summary.md`. The default run (without
+  `--use-llm`) uses the built-in template rationale and needs no key.
 
-Input files remain in `data/input/` after each run. Use `data/input/archive/` only if you move old exports there manually.
+### Planned enhancements
+
+We intend to add further integrations as keys become available, to enrich the
+screen without changing the core workflow — for example a data-enrichment
+provider for fuller founder and traction data, and a news/signals API for
+recent-event context. These are placeholders in `.env.example` today and are not
+yet wired into the pipeline.
 
 ---
 
@@ -197,5 +242,15 @@ TFGI-Sourcing-Exercise/
 ├── data/
 │   ├── input/                   # drop weekly export here
 │   └── output/                  # cleaned_data.csv
-└── output/                      # dated run folders
+├── output/                      # dated run folders
+├── requirements.txt             # pinned dependencies
+├── .env.example                 # optional API keys (copy to .env)
+└── LICENSE                      # confidential / internal use
 ```
+
+---
+
+## License
+
+Confidential. Prepared for The Friedkin Group for internal use only. Not for
+redistribution. See [LICENSE](LICENSE).
