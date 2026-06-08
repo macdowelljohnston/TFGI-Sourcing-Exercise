@@ -9,7 +9,7 @@ Top 15 qualified companies (minimum score 75). Full scored list: 34 companies in
 |-----------|--------|
 | Tiers | 5 Tier 1, 10 Tier 2 |
 | Sector concentration | Manufacturing (12), Logistics (11), Transportation (9), Aerospace (7), Space (7) |
-| Stages | Early Stage (9), Growth Stage (6) |
+| Funding rounds | Series A (12), Series B (3) |
 
 **Top picks:** Blue Water Autonomy, Lyric, Robust.AI
 

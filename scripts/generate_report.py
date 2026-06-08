@@ -74,6 +74,34 @@ def _matched_sectors(row, target_sectors, cols=None):
     return [kw for kw in target_sectors if kw.lower() in text]
 
 
+# Logical order for funding rounds in the summary (earliest -> latest).
+_ROUND_ORDER = [
+    "Pre-Seed", "Seed", "Angel",
+    "Series A", "Series B", "Series C", "Series D",
+    "Series E", "Series F", "Series G", "Series H",
+]
+
+
+def _normalize_round(value):
+    """Collapse a raw Last Funding Type to its base round label.
+
+    e.g. 'Series A extension' / 'Series A1' -> 'Series A', 'Pre-seed' -> 'Pre-Seed'.
+    Unknown round types are returned cleaned but otherwise unchanged.
+    """
+    v = clean_text(value).strip()
+    if not v or v.lower() == "nan":
+        return ""
+    low = v.lower()
+    for label in _ROUND_ORDER:
+        if low.startswith(label.lower()):
+            return label
+    return v
+
+
+def _round_sort_key(label):
+    return _ROUND_ORDER.index(label) if label in _ROUND_ORDER else len(_ROUND_ORDER)
+
+
 def build_summary(ranked, scoring_cfg, style):
     """Compute the Portfolio Summary content (shared by md + docx)."""
     tier_order = [clean_text(t["label"]) for t in scoring_cfg.get("score_tiers", [])]
@@ -89,7 +117,13 @@ def build_summary(ranked, scoring_cfg, style):
     top_sectors = sorted(sector_tally.items(), key=lambda kv: kv[1], reverse=True)
     top_sectors = top_sectors[:style.get("max_sectors_in_summary", 5)]
 
-    stage_counts = ranked["Growth Stage"].value_counts().to_dict()
+    round_tally = {}
+    for _, row in ranked.iterrows():
+        r = _normalize_round(row.get("Last Funding Type"))
+        if r:
+            round_tally[r] = round_tally.get(r, 0) + 1
+    rounds_sorted = sorted(round_tally.items(), key=lambda kv: _round_sort_key(kv[0]))
+
     n_picks = style.get("top_picks_count", 3)
     picks = [clean_text(r.get("Company Name", "")) for _, r in ranked.head(n_picks).iterrows()]
 
@@ -97,7 +131,7 @@ def build_summary(ranked, scoring_cfg, style):
         "total": len(ranked),
         "tiers_str": ", ".join(f"{n} {t}" for t, n in tier_counts.items()),
         "sectors_str": ", ".join(f"{k} ({v})" for k, v in top_sectors),
-        "stages_str": ", ".join(f"{k} ({v})" for k, v in stage_counts.items()),
+        "stages_str": ", ".join(f"{k} ({v})" for k, v in rounds_sorted),
         "picks_str": ", ".join(picks),
     }
 
@@ -290,7 +324,7 @@ def generate_report(ranked_full, settings, output_dir, use_llm=False):
         L.append("|-----------|--------|")
         L.append(f"| Tiers | {s['tiers_str']} |")
         L.append(f"| Sector concentration | {s['sectors_str']} |")
-        L.append(f"| Stages | {s['stages_str']} |")
+        L.append(f"| Funding rounds | {s['stages_str']} |")
         L.append("")
         L.append(f"**Top picks:** {s['picks_str']}")
         L.append("")

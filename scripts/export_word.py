@@ -148,7 +148,7 @@ def export_to_word(brief, settings, output_dir, input_name="", rationale_cfg=Non
         rows = [
             ("Tiers", s["tiers_str"]),
             ("Sector concentration", s["sectors_str"]),
-            ("Stages", s["stages_str"]),
+            ("Funding rounds", s["stages_str"]),
         ]
         table = doc.add_table(rows=len(rows), cols=2)
         table.alignment = WD_TABLE_ALIGNMENT.LEFT
