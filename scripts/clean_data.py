@@ -8,29 +8,128 @@ See skills/01_data_cleaning.md. Tunable values: pipeline_settings.json -> cleani
 
 import glob
 import os
+import shutil
 import pandas as pd
 
 from load_settings import load_settings, get_section
 
+DEFAULT_EXTENSIONS = (".xlsx", ".csv", ".xlsm")
 
-def find_input_file(input_dir="data/input"):
-    """Return the most recently modified xlsx/csv in the input directory."""
-    files = glob.glob(os.path.join(input_dir, "*.xlsx")) + \
-            glob.glob(os.path.join(input_dir, "*.csv"))
-    if not files:
-        archive_dir = os.path.join(input_dir, "archive")
-        archived = glob.glob(os.path.join(archive_dir, "*.xlsx")) + \
-                   glob.glob(os.path.join(archive_dir, "*.csv"))
-        hint = f"No .xlsx or .csv found in {input_dir}.\n"
-        hint += f"  Drop a Specter export into {input_dir}/ and run again."
+
+def _resolve_desktop():
+    """Return the user's Desktop path (handles OneDrive-redirected Desktop)."""
+    home = os.path.expanduser("~")
+    for cand in (os.path.join(home, "Desktop"),
+                 os.path.join(home, "OneDrive", "Desktop")):
+        if os.path.isdir(cand):
+            return cand
+    return os.path.join(home, "Desktop")
+
+
+def resolve_drop_folder(settings=None):
+    """Resolve the external drop folder from env var or config.
+
+    Resolution order: env var (from config.input.drop_folder_env_var) >
+    config.input.drop_folder. A relative path is resolved against the Desktop so
+    the repo stays portable (no hardcoded personal absolute path). Returns the
+    absolute path, creating it when auto_create_drop_folder is set.
+    """
+    cfg = (settings or {}).get("input", {}) if settings else {}
+    env_var = cfg.get("drop_folder_env_var", "FRIEDKIN_INBOX")
+    configured = os.environ.get(env_var) or cfg.get("drop_folder")
+    if not configured:
+        return None
+
+    if os.path.isabs(configured):
+        folder = configured
+    else:
+        rel = configured.replace("\\", "/")
+        if rel.lower().startswith("desktop/"):
+            rel = rel[len("desktop/"):]
+        folder = os.path.join(_resolve_desktop(), rel)
+
+    if cfg.get("auto_create_drop_folder", True):
+        os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+def _candidates_in(folder, extensions):
+    """Return all files in folder matching any of the given extensions."""
+    if not folder or not os.path.isdir(folder):
+        return []
+    files = []
+    for ext in extensions:
+        files.extend(glob.glob(os.path.join(folder, f"*{ext}")))
+    return files
+
+
+def _newest_in(folder, extensions):
+    files = _candidates_in(folder, extensions)
+    return max(files, key=os.path.getmtime) if files else None
+
+
+def find_input_file(input_dir="data/input", settings=None, inbox=None):
+    """Return the input file to process, searching the drop folder then the repo.
+
+    Search order: explicit ``inbox`` folder > configured external drop folder >
+    repo ``input_dir``. When a file is found outside ``input_dir`` and
+    ``input.copy_to_repo`` is set, it is copied into ``input_dir`` (for
+    reproducibility) and the repo copy path is returned.
+    """
+    cfg = (settings or {}).get("input", {}) if settings else {}
+    extensions = tuple(cfg.get("file_extensions", DEFAULT_EXTENSIONS))
+    repo_input_dir = cfg.get("repo_input_dir", input_dir)
+
+    drop_folder = inbox or resolve_drop_folder(settings)
+
+    search_dirs = []
+    if drop_folder:
+        search_dirs.append(drop_folder)
+    search_dirs.append(repo_input_dir)
+
+    chosen = None
+    chosen_files = []
+    for folder in search_dirs:
+        files = _candidates_in(folder, extensions)
+        if files:
+            chosen_files = files
+            chosen = max(files, key=os.path.getmtime)
+            break
+
+    if len(chosen_files) > 1:
+        folder = os.path.dirname(chosen)
+        ordered = sorted(chosen_files, key=os.path.getmtime, reverse=True)
+        print(f"  Warning: {len(chosen_files)} candidate files found in {folder}:")
+        for f in ordered:
+            marker = "  <- using (most recently modified)" if f == chosen else ""
+            print(f"    - {os.path.basename(f)}{marker}")
+        print('  Keep only one file here, or choose explicitly with '
+              '--input "<path>".')
+
+    if not chosen:
+        archive_dir = os.path.join(repo_input_dir, "archive")
+        archived = _newest_in(archive_dir, extensions)
+        hint = "No input file found.\n"
+        if drop_folder:
+            hint += f"  Drop a Specter export into {drop_folder}\n"
+        hint += f"  or into {repo_input_dir}/ and run again."
         if archived:
-            newest = max(archived, key=os.path.getmtime)
             hint += (
                 f"\n  Or point at a copy in archive/:\n"
-                f'    python scripts/run_pipeline.py --input "{newest}"'
+                f'    python scripts/run_pipeline.py --input "{archived}"'
             )
         raise FileNotFoundError(hint)
-    return max(files, key=os.path.getmtime)
+
+    chosen_dir = os.path.normpath(os.path.dirname(chosen))
+    if cfg.get("copy_to_repo", False) and chosen_dir != os.path.normpath(repo_input_dir):
+        os.makedirs(repo_input_dir, exist_ok=True)
+        dest = os.path.join(repo_input_dir, os.path.basename(chosen))
+        shutil.copyfile(chosen, dest)
+        print(f"  Picked up from drop folder: {chosen}")
+        print(f"  Copied into {repo_input_dir}/")
+        return dest
+
+    return chosen
 
 
 def load_and_clean(input_path=None, input_dir="data/input",
@@ -40,7 +139,7 @@ def load_and_clean(input_path=None, input_dir="data/input",
     cfg = get_section(settings, "cleaning")
 
     if input_path is None:
-        input_path = find_input_file(input_dir)
+        input_path = find_input_file(input_dir, settings=settings)
     print(f"  Reading: {input_path}")
 
     if input_path.lower().endswith(".csv"):

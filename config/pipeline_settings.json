@@ -1,4 +1,12 @@
 {
+  "input": {
+    "drop_folder": "Desktop/Friedkin_Inbox",
+    "drop_folder_env_var": "FRIEDKIN_INBOX",
+    "auto_create_drop_folder": true,
+    "copy_to_repo": true,
+    "repo_input_dir": "data/input",
+    "file_extensions": [".xlsx", ".csv", ".xlsm"]
+  },
   "cleaning": {
     "columns_to_keep": [
       "Company Name", "Domain", "Description", "Industry", "Tech Vertical",

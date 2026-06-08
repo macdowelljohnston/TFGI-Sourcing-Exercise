@@ -30,9 +30,11 @@ Results appear in `output/<filename>_<date>/`:
 The pipeline is built to run on a new Specter export each week. Every run is
 self-contained and reproducible.
 
-1. **Add the export.** Drop the new Specter file into `data/input/`. The newest
-   file is selected automatically, or pass one explicitly with
-   `--input path/to/file.xlsx`.
+1. **Add the export.** Drop the new Specter file into the **drop folder** — a
+   `Friedkin_Inbox` folder on your Desktop (created automatically). The pipeline
+   finds the newest file there, copies it into `data/input/` for reproducibility,
+   and processes it. You can also drop straight into `data/input/`, or pass a
+   file explicitly with `--input path/to/file.xlsx`.
 2. **Run the pipeline.** `python scripts/run_pipeline.py`.
 3. **Review the brief.** Open `output/<latest_run>/investor_brief.md` (or the
    `.docx`).
@@ -41,6 +43,32 @@ Each run writes to its own dated folder under `output/`, so prior weeks are
 preserved and runs never overwrite each other. Input files remain in
 `data/input/` after a run; move older exports to `data/input/archive/` only if
 you want to keep that folder tidy.
+
+The drop folder is configurable in `config/pipeline_settings.json` (`input`
+section) or via the `FRIEDKIN_INBOX` environment variable / `--inbox` flag.
+Resolution order: `--input` > `--inbox` / `FRIEDKIN_INBOX` >
+`input.drop_folder` > `data/input/`.
+
+### Reset between runs
+
+To reset the workspace and re-run from scratch (e.g. during a demo):
+
+```powershell
+python scripts/clean_workspace.py              # asks for confirmation
+python scripts/clean_workspace.py --yes        # no prompt
+python scripts/clean_workspace.py --keep-input # outputs only; keep inputs
+```
+
+By default this clears **both generated outputs and the local input copies**
+(run folders under `output/`, files in `data/output/`, and the export in
+`data/input/`). That forces the next `run_pipeline.py` to pull the export fresh
+from the `Friedkin_Inbox` drop folder - a clean way to demonstrate the
+end-to-end automation.
+
+It never touches the `Friedkin_Inbox` drop folder itself (your source of truth),
+`data/input/archive/`, the `.gitkeep` placeholders, or the Desktop Word copies -
+so clearing `data/input/` is safe: it is only a working copy that gets
+re-pulled. Use `--keep-input` if you only want to clear outputs.
 
 ---
 
@@ -198,11 +226,15 @@ yet wired into the pipeline.
 
 ## Tool choices (and why)
 
-- **Python + pandas** — deterministic, auditable cleaning and scoring across ~150 rows weekly.
+- **Python + pandas** — deterministic, auditable cleaning and scoring across ~150 rows weekly; the analytics ecosystem the team already knows.
+- **openpyxl** — reads Specter's native `.xlsx` exports directly (via `pandas.read_excel`), so no manual CSV conversion step is needed each week.
+- **python-docx** — turns the ranked shortlist into a partner-ready `investor_brief.docx` with Friedkin styling, instead of asking reviewers to read raw Markdown.
+- **Markdown as the primary brief** — plain-text, diff-able, and version-controllable; the `.docx` is generated from the same data for distribution.
 - **Single JSON config** — non-technical users change criteria without reading code.
 - **Markdown skills** — modular documentation; skill 04 doubles as the LLM prompt source.
 - **Rule-based founder tags** — reproducible, no API cost; Specter already structures highlights.
-- **Optional Claude** — `--use-llm` for richer rationales when desired.
+- **Optional Claude (`anthropic`)** — `--use-llm` for richer rationales when desired; strictly optional so the pipeline runs fully offline by default.
+- **Pinned dependencies** — exact versions in `requirements.txt` keep every weekly run reproducible; upgrade deliberately, then re-run.
 
 ---
 
@@ -238,9 +270,10 @@ TFGI-Sourcing-Exercise/
 │   ├── recommend_actions.py
 │   ├── generate_report.py
 │   ├── export_word.py
+│   ├── clean_workspace.py       # reset generated outputs for a fresh run
 │   └── run_pipeline.py
 ├── data/
-│   ├── input/                   # drop weekly export here
+│   ├── input/                   # drop weekly export here (or use the Desktop inbox)
 │   └── output/                  # cleaned_data.csv
 ├── output/                      # dated run folders
 ├── requirements.txt             # pinned dependencies

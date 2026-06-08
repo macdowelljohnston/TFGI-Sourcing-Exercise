@@ -5,8 +5,17 @@ Single entry point for the Friedkin Specter screening workflow.
 Usage:
     python scripts/run_pipeline.py
     python scripts/run_pipeline.py --input data/input/your_file.xlsx
+    python scripts/run_pipeline.py --inbox "C:/path/to/drop_folder"
     python scripts/run_pipeline.py --use-llm     (requires ANTHROPIC_API_KEY)
     python scripts/run_pipeline.py --no-word      (skip the Word doc)
+
+Input is resolved in this order:
+  1. --input <file>             (explicit file; highest priority)
+  2. --inbox <folder> or the FRIEDKIN_INBOX env var
+  3. config.input.drop_folder   (default: a Friedkin_Inbox folder on the Desktop)
+  4. data/input/                (repo fallback)
+A file found in an external drop folder is copied into data/input/ before the
+run (config.input.copy_to_repo) so every run stays reproducible from the repo.
 
 Pipeline (4 steps + optional Word export):
   1. clean_data.py       -> skills/01, config cleaning section
@@ -32,7 +41,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from clean_data import load_and_clean, find_input_file
+from clean_data import load_and_clean, find_input_file, resolve_drop_folder
 from score_companies import score_dataframe, brief_shortlist
 from recommend_actions import add_recommendations
 from generate_report import generate_report
@@ -62,13 +71,19 @@ def _find_desktop():
 def main():
     parser = argparse.ArgumentParser(description="Friedkin sourcing pipeline")
     parser.add_argument("--input", default=None)
+    parser.add_argument("--inbox", default=None,
+                        help="External drop folder to scan (overrides config/FRIEDKIN_INBOX)")
     parser.add_argument("--config", default="config/pipeline_settings.json")
     parser.add_argument("--use-llm", action="store_true")
     parser.add_argument("--no-word", action="store_true", help="Skip Word doc generation")
     args = parser.parse_args()
 
     settings = load_settings(args.config)
-    input_path = args.input or find_input_file()
+    if not args.input:
+        drop_folder = args.inbox or resolve_drop_folder(settings)
+        if drop_folder:
+            print(f"Drop folder: {drop_folder}")
+    input_path = args.input or find_input_file(settings=settings, inbox=args.inbox)
     run_name = _run_folder_name(input_path)
     out_dir = os.path.join("output", run_name)
     if os.path.normpath(out_dir) == "output":

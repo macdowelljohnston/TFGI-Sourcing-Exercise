@@ -29,6 +29,33 @@ python scripts/run_pipeline.py
 
 ## Section-by-section reference
 
+### `input`
+
+Controls where the pipeline looks for a new Specter export. This lets you drop a
+file into a convenient external folder instead of attaching it in the chat or
+copying it into the repo by hand.
+
+- **`drop_folder`** — the external folder to scan. A relative path (e.g.
+  `"Desktop/Friedkin_Inbox"`) is resolved against your Desktop at runtime, so the
+  setting stays portable across machines (it also handles a OneDrive-redirected
+  Desktop). An absolute path is used as-is.
+- **`drop_folder_env_var`** — name of an environment variable that, if set,
+  overrides `drop_folder`. Default: `"FRIEDKIN_INBOX"`. Set it in `.env`.
+- **`auto_create_drop_folder`** — when `true`, the drop folder is created if it
+  does not exist, so there is always somewhere to drop the file.
+- **`copy_to_repo`** — when `true`, a file found in the external drop folder is
+  copied into `repo_input_dir` before processing, so every run is reproducible
+  from the repo. The original in the drop folder is left in place.
+- **`repo_input_dir`** — the in-repo input/fallback folder. Default:
+  `"data/input"`.
+- **`file_extensions`** — which file types count as an export. Default:
+  `[".xlsx", ".csv", ".xlsm"]`.
+
+**Resolution order** (first match wins): `--input <file>` >
+`--inbox <folder>` / `FRIEDKIN_INBOX` > `input.drop_folder` > `data/input/`.
+
+---
+
 ### `cleaning`
 
 Controls which columns are kept from the raw Specter export and how the data is
